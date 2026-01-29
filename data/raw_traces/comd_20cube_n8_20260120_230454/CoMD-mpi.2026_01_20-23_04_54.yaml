@@ -1,0 +1,36 @@
+
+Mini-Application Name    : CoMD-mpi
+Mini-Application Version : 1.1
+Platform:
+  hostname: 6ba87c583b5c
+  kernel name: 'Linux'
+  kernel release: '6.12.54-linuxkit'
+  processor: 'unknown'
+Build:
+  CC: '/usr/bin/mpicc'
+  compiler version: 'gcc (Debian 14.2.0-19) 14.2.0'
+  CFLAGS: '-std=c99 -DDOUBLE -DDO_MPI -O2'
+  LDFLAGS: ' -lm '
+  using MPI: true
+  Threading: none
+  Double Precision: true
+Run Date/Time: 2026-01-20, 23:04:54
+
+Command Line Parameters:
+  doeam: 0
+  potDir: pots
+  potName: Cu_u6.eam
+  potType: funcfl
+  nx: 2
+  ny: 2
+  nz: 2
+  xproc: 1
+  yproc: 1
+  zproc: 1
+  Lattice constant: -1 Angstroms
+  nSteps: 100
+  printRate: 10
+  Time step: 1 fs
+  Initial Temperature: 600 K
+  Initial Delta: 0 Angstroms
+

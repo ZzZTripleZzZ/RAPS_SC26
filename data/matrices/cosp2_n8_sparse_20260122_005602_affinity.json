@@ -1,0 +1,234 @@
+{
+  "num_nodes": 8,
+  "num_edges": 28,
+  "total_bytes": 63931632,
+  "nodes": [
+    {
+      "id": 0,
+      "rank": 0,
+      "send_bytes": 5375328,
+      "recv_bytes": 4720896,
+      "degree": 7
+    },
+    {
+      "id": 1,
+      "rank": 1,
+      "send_bytes": 8804288,
+      "recv_bytes": 9400928,
+      "degree": 7
+    },
+    {
+      "id": 2,
+      "rank": 2,
+      "send_bytes": 8812400,
+      "recv_bytes": 8775792,
+      "degree": 7
+    },
+    {
+      "id": 3,
+      "rank": 3,
+      "send_bytes": 8682720,
+      "recv_bytes": 8949824,
+      "degree": 7
+    },
+    {
+      "id": 4,
+      "rank": 4,
+      "send_bytes": 9043072,
+      "recv_bytes": 9048272,
+      "degree": 7
+    },
+    {
+      "id": 5,
+      "rank": 5,
+      "send_bytes": 9397088,
+      "recv_bytes": 8970976,
+      "degree": 7
+    },
+    {
+      "id": 6,
+      "rank": 6,
+      "send_bytes": 8873152,
+      "recv_bytes": 9301968,
+      "degree": 7
+    },
+    {
+      "id": 7,
+      "rank": 7,
+      "send_bytes": 4943584,
+      "recv_bytes": 4762976,
+      "degree": 7
+    }
+  ],
+  "edges": [
+    {
+      "source": 0,
+      "target": 1,
+      "weight": 8946688,
+      "count": 108
+    },
+    {
+      "source": 1,
+      "target": 2,
+      "weight": 8371824,
+      "count": 108
+    },
+    {
+      "source": 3,
+      "target": 4,
+      "weight": 8424096,
+      "count": 108
+    },
+    {
+      "source": 4,
+      "target": 5,
+      "weight": 8762560,
+      "count": 108
+    },
+    {
+      "source": 5,
+      "target": 6,
+      "weight": 8681840,
+      "count": 108
+    },
+    {
+      "source": 6,
+      "target": 7,
+      "weight": 8602368,
+      "count": 108
+    },
+    {
+      "source": 2,
+      "target": 3,
+      "weight": 8314240,
+      "count": 108
+    },
+    {
+      "source": 0,
+      "target": 4,
+      "weight": 191504,
+      "count": 2
+    },
+    {
+      "source": 0,
+      "target": 6,
+      "weight": 189808,
+      "count": 2
+    },
+    {
+      "source": 0,
+      "target": 2,
+      "weight": 189312,
+      "count": 2
+    },
+    {
+      "source": 2,
+      "target": 4,
+      "weight": 176688,
+      "count": 2
+    },
+    {
+      "source": 0,
+      "target": 3,
+      "weight": 188144,
+      "count": 2
+    },
+    {
+      "source": 1,
+      "target": 6,
+      "weight": 175104,
+      "count": 2
+    },
+    {
+      "source": 0,
+      "target": 7,
+      "weight": 195136,
+      "count": 2
+    },
+    {
+      "source": 1,
+      "target": 3,
+      "weight": 173440,
+      "count": 2
+    },
+    {
+      "source": 0,
+      "target": 5,
+      "weight": 195632,
+      "count": 2
+    },
+    {
+      "source": 1,
+      "target": 4,
+      "weight": 176800,
+      "count": 2
+    },
+    {
+      "source": 2,
+      "target": 6,
+      "weight": 174992,
+      "count": 2
+    },
+    {
+      "source": 3,
+      "target": 6,
+      "weight": 173824,
+      "count": 2
+    },
+    {
+      "source": 3,
+      "target": 5,
+      "weight": 179648,
+      "count": 2
+    },
+    {
+      "source": 4,
+      "target": 6,
+      "weight": 177184,
+      "count": 2
+    },
+    {
+      "source": 3,
+      "target": 7,
+      "weight": 179152,
+      "count": 2
+    },
+    {
+      "source": 1,
+      "target": 7,
+      "weight": 180432,
+      "count": 2
+    },
+    {
+      "source": 2,
+      "target": 5,
+      "weight": 180816,
+      "count": 2
+    },
+    {
+      "source": 1,
+      "target": 5,
+      "weight": 180928,
+      "count": 2
+    },
+    {
+      "source": 2,
+      "target": 7,
+      "weight": 180320,
+      "count": 2
+    },
+    {
+      "source": 5,
+      "target": 7,
+      "weight": 186640,
+      "count": 2
+    },
+    {
+      "source": 4,
+      "target": 7,
+      "weight": 182512,
+      "count": 2
+    }
+  ],
+  "metadata": {}
+}

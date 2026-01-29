@@ -1,0 +1,9 @@
+weather: false
+time: PT10M
+time_unit: PT1S
+numjobs: 20
+output: "/app/data/experiments_network/alloc_lassen_random"
+noui: true
+workload: allocation_test
+allocation: random
+system: lassen

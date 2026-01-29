@@ -1,0 +1,149 @@
+CoSP2: SP2 Loop
+
+Parameters:
+msparse = 80  hDim = 1600  debug = 0
+hmatName = 
+eps = 1e-05  hEps = 1e-16
+idemTol = 1e-14
+
+hDim = 1600 M = 80
+Adjusted M = 96
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+
+Sparsity:
+Initial sparsity = 10956, fraction = 4.279687e-03, Avg per row = 6.847500
+Max per row = 7
+I = 4, count = 2, fraction = 0.001250
+I = 5, count = 10, fraction = 0.006250
+I = 6, count = 218, fraction = 0.136250
+I = 7, count = 1370, fraction = 0.856250
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+Generated H Matrix nnz = 10956 avg nnz/row = 6
+
+Gershgorin:
+New  eMax, eMin = 1.654545e+00, -6.744022e-01

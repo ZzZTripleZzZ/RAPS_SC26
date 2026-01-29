@@ -1,0 +1,10 @@
+simulate_network: true
+weather: false
+time: PT30M
+time_unit: PT1S
+numjobs: 30
+output: "/app/data/experiments_v6/net_lassen_contiguous"
+noui: true
+workload: allocation_test
+allocation: contiguous
+system: lassen

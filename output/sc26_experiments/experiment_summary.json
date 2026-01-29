@@ -1,0 +1,67 @@
+{
+  "timestamp": "2026-01-29T04:46:51.145465",
+  "workloads": [
+    {
+      "name": "comd_n64_dense_20260121_214717",
+      "app_type": "comd",
+      "num_nodes": 64,
+      "num_edges": 192,
+      "avg_degree": 6.0,
+      "sparsity": 0.9047619047619048
+    },
+    {
+      "name": "cosp2_n128_sparse_20260121_215534",
+      "app_type": "cosp2",
+      "num_nodes": 129,
+      "num_edges": 128,
+      "avg_degree": 1.9844961240310077,
+      "sparsity": 0.9844961240310077
+    },
+    {
+      "name": "hpgmg_n128_fv_20260121_215033",
+      "app_type": "hpgmg",
+      "num_nodes": 127,
+      "num_edges": 1220,
+      "avg_degree": 19.212598425196852,
+      "sparsity": 0.8475190601174853
+    },
+    {
+      "name": "lulesh_n64_cube_20260121_214715",
+      "app_type": "lulesh",
+      "num_nodes": 64,
+      "num_edges": 468,
+      "avg_degree": 14.625,
+      "sparsity": 0.7678571428571428
+    }
+  ],
+  "experiments": {
+    "adaptive_routing": {
+      "count": 20,
+      "systems": [
+        "lassen",
+        "frontier"
+      ]
+    },
+    "node_placement": {
+      "count": 16,
+      "systems": [
+        "lassen",
+        "frontier"
+      ]
+    },
+    "scheduling": {
+      "count": 32,
+      "systems": [
+        "lassen",
+        "frontier"
+      ]
+    },
+    "power_consumption": {
+      "count": 8,
+      "systems": [
+        "lassen",
+        "frontier"
+      ]
+    }
+  }
+}

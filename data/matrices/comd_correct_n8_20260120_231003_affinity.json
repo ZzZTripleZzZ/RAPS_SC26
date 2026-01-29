@@ -1,0 +1,138 @@
+{
+  "num_nodes": 8,
+  "num_edges": 12,
+  "total_bytes": 754204920,
+  "nodes": [
+    {
+      "id": 0,
+      "rank": 0,
+      "send_bytes": 94275944,
+      "recv_bytes": 94274208,
+      "degree": 3
+    },
+    {
+      "id": 1,
+      "rank": 1,
+      "send_bytes": 94275944,
+      "recv_bytes": 94275944,
+      "degree": 3
+    },
+    {
+      "id": 2,
+      "rank": 2,
+      "send_bytes": 94277064,
+      "recv_bytes": 94275720,
+      "degree": 3
+    },
+    {
+      "id": 3,
+      "rank": 3,
+      "send_bytes": 94274208,
+      "recv_bytes": 94277232,
+      "degree": 3
+    },
+    {
+      "id": 4,
+      "rank": 4,
+      "send_bytes": 94274208,
+      "recv_bytes": 94274208,
+      "degree": 3
+    },
+    {
+      "id": 5,
+      "rank": 5,
+      "send_bytes": 94274208,
+      "recv_bytes": 94275944,
+      "degree": 3
+    },
+    {
+      "id": 6,
+      "rank": 6,
+      "send_bytes": 94276112,
+      "recv_bytes": 94277064,
+      "degree": 3
+    },
+    {
+      "id": 7,
+      "rank": 7,
+      "send_bytes": 94277232,
+      "recv_bytes": 94274600,
+      "degree": 3
+    }
+  ],
+  "edges": [
+    {
+      "source": 6,
+      "target": 7,
+      "weight": 54297992,
+      "count": 404
+    },
+    {
+      "source": 2,
+      "target": 3,
+      "weight": 54297600,
+      "count": 404
+    },
+    {
+      "source": 0,
+      "target": 1,
+      "weight": 54299336,
+      "count": 404
+    },
+    {
+      "source": 4,
+      "target": 5,
+      "weight": 54297600,
+      "count": 404
+    },
+    {
+      "source": 5,
+      "target": 7,
+      "weight": 62442240,
+      "count": 404
+    },
+    {
+      "source": 4,
+      "target": 6,
+      "weight": 62442240,
+      "count": 404
+    },
+    {
+      "source": 3,
+      "target": 7,
+      "weight": 71811600,
+      "count": 404
+    },
+    {
+      "source": 1,
+      "target": 5,
+      "weight": 71810312,
+      "count": 404
+    },
+    {
+      "source": 1,
+      "target": 3,
+      "weight": 62442240,
+      "count": 404
+    },
+    {
+      "source": 0,
+      "target": 2,
+      "weight": 62442240,
+      "count": 404
+    },
+    {
+      "source": 2,
+      "target": 6,
+      "weight": 71812944,
+      "count": 404
+    },
+    {
+      "source": 0,
+      "target": 4,
+      "weight": 71808576,
+      "count": 404
+    }
+  ],
+  "metadata": {}
+}

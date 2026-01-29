@@ -1,0 +1,17 @@
+
+
+********************************************************************************
+***                            HPGMG-FV Benchmark                            ***
+********************************************************************************
+Requested MPI_THREAD_FUNNELED, got MPI_THREAD_FUNNELED
+128 MPI Tasks of 32 threads
+
+
+===== Benchmark setup ==========================================================
+
+attempting to create a 160^3 level from 125 x 32^3 boxes distributed among 128 tasks...
+  boundary condition = BC_DIRICHLET
+  Decomposing level via Z-mort ordering... done
+  Allocating vectors... done
+  Calculating boxes per process... target=0.977, max=1
+  Creating Poisson (a=0.000000, b=1.000000) test problem

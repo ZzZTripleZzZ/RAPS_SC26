@@ -1,0 +1,16 @@
+services:
+  sc26_env:
+    build: .
+    container_name: sc26_simulation
+    # Mount your current directory (.) to /app in the container
+    volumes:
+      - .:/app
+    # Keep the container running so we can log in and execute commands
+    command: tail -f /dev/null
+    # Optimization for M4 Mac (Assigning memory)
+    # deploy:
+    #   resources:
+    #     limits:
+    #       memory: 12G
+    tty: true        # <--- 加上这一行！(相当于 -t)
+    stdin_open: true

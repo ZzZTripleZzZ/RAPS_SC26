@@ -1,0 +1,9 @@
+weather: false
+time: PT1H
+time_unit: PT1S
+output: "/app/data/experiments_v6/uc3_lassen_fcfs_easy"
+noui: true
+workload: randomAI
+policy: fcfs
+backfill: easy
+system: lassen

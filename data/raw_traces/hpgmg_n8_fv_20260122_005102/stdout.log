@@ -1,0 +1,73 @@
+
+
+********************************************************************************
+***                            HPGMG-FV Benchmark                            ***
+********************************************************************************
+Requested MPI_THREAD_FUNNELED, got MPI_THREAD_FUNNELED
+8 MPI Tasks of 32 threads
+
+
+===== Benchmark setup ==========================================================
+
+attempting to create a 64^3 level from 8 x 32^3 boxes distributed among 8 tasks...
+  boundary condition = BC_DIRICHLET
+  Decomposing level via Z-mort ordering... done
+  Allocating vectors... done
+  Calculating boxes per process... target=1.000, max=1
+  Creating Poisson (a=0.000000, b=1.000000) test problem
+done (28.578650 seconds)
+
+attempting to create a 32^3 level from 8 x 16^3 boxes distributed among 8 tasks...
+  boundary condition = BC_DIRICHLET
+  Decomposing level via Z-mort ordering... done
+  Allocating vectors... done
+  Calculating boxes per process... target=1.000, max=1
+
+attempting to create a 16^3 level from 8 x 8^3 boxes distributed among 8 tasks...
+  boundary condition = BC_DIRICHLET
+  Decomposing level via Z-mort ordering... done
+  Allocating vectors... done
+  Calculating boxes per process... target=1.000, max=1
+
+attempting to create a 8^3 level from 1 x 8^3 boxes distributed among 8 tasks...
+  boundary condition = BC_DIRICHLET
+  Decomposing level via Z-mort ordering... done
+  Allocating vectors... done
+  Calculating boxes per process... target=0.125, max=1
+
+attempting to create a 4^3 level from 1 x 4^3 boxes distributed among 8 tasks...
+  boundary condition = BC_DIRICHLET
+  Decomposing level via Z-mort ordering... done
+  Allocating vectors... done
+  Calculating boxes per process... target=0.125, max=1
+
+attempting to create a 2^3 level from 1 x 2^3 boxes distributed among 8 tasks...
+  boundary condition = BC_DIRICHLET
+  Decomposing level via Z-mort ordering... done
+  Allocating vectors... done
+  Calculating boxes per process... target=0.125, max=1
+
+  Building restriction and interpolation lists... done
+
+  Building MPI subcommunicator for level  1... done (0.000795 seconds)
+  Building MPI subcommunicator for level  2... done (0.000665 seconds)
+  Building MPI subcommunicator for level  3... done (0.000299 seconds)
+  Building MPI subcommunicator for level  4... done (0.000553 seconds)
+  Building MPI subcommunicator for level  5... done (0.000207 seconds)
+
+done (28.111957 seconds)
+done (16.305704 seconds)
+  calculating D^{-1} exactly for level h=1.250000e-01 using  64 colors...  done (0.710240 seconds)
+  calculating D^{-1} exactly for level h=2.500000e-01 using  64 colors...  done (0.691964 seconds)
+  calculating D^{-1} exactly for level h=5.000000e-01 using   8 colors...  done (0.071944 seconds)
+
+
+
+===== Warming up by running 10 solves ==========================================
+FMGSolve... f-cycle     norm=6.934041112727218e-05  rel=7.171390380025997e-05  done (27.555455 seconds)
+FMGSolve... f-cycle     norm=6.934041112727218e-05  rel=7.171390380025997e-05  done (27.476031 seconds)
+FMGSolve... f-cycle     norm=6.934041112727218e-05  rel=7.171390380025997e-05  done (27.964009 seconds)
+FMGSolve... f-cycle     norm=6.934041112727218e-05  rel=7.171390380025997e-05  done (27.805582 seconds)
+FMGSolve... f-cycle     norm=6.934041112727218e-05  rel=7.171390380025997e-05  done (26.900981 seconds)
+FMGSolve... f-cycle     norm=6.934041112727218e-05  rel=7.171390380025997e-05  done (28.031773 seconds)
+FMGSolve... f-cycle     norm=6.934041112727218e-05  rel=7.171390380025997e-05  done (28.193179 seconds)

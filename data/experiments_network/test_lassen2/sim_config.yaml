@@ -1,0 +1,9 @@
+weather: false
+time: PT10M
+time_unit: PT1S
+numjobs: 15
+output: "/app/data/experiments_network/test_lassen2"
+noui: true
+workload: allocation_test
+allocation: contiguous
+system: lassen

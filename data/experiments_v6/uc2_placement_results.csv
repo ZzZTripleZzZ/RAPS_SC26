@@ -1,0 +1,7 @@
+system,workload,data_type,jobs_completed,avg_power_mw,total_energy_mwh,throughput
+lassen,random,synthetic,0,7.0473,0.0,0.0
+lassen,randomAI,synthetic,0,5.6949,0.0,0.0
+lassen,benchmark,synthetic,0,7.8703,0.0,0.0
+frontier,random,synthetic,0,13.8685,0.0,0.0
+frontier,randomAI,synthetic,5,21.2798,0.0,5.0
+frontier,benchmark,synthetic,0,28.2279,0.0,0.0

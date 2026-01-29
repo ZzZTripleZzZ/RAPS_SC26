@@ -1,0 +1,842 @@
+{
+  "num_nodes": 64,
+  "num_edges": 64,
+  "total_bytes": 16821168,
+  "nodes": [
+    {
+      "id": 0,
+      "rank": 0,
+      "send_bytes": 117904,
+      "recv_bytes": 149024,
+      "degree": 1
+    },
+    {
+      "id": 1,
+      "rank": 1,
+      "send_bytes": 298048,
+      "recv_bytes": 274720,
+      "degree": 2
+    },
+    {
+      "id": 2,
+      "rank": 2,
+      "send_bytes": 313632,
+      "recv_bytes": 281952,
+      "degree": 2
+    },
+    {
+      "id": 3,
+      "rank": 3,
+      "send_bytes": 265856,
+      "recv_bytes": 289488,
+      "degree": 2
+    },
+    {
+      "id": 4,
+      "rank": 4,
+      "send_bytes": 265344,
+      "recv_bytes": 260656,
+      "degree": 2
+    },
+    {
+      "id": 5,
+      "rank": 5,
+      "send_bytes": 255456,
+      "recv_bytes": 281872,
+      "degree": 2
+    },
+    {
+      "id": 6,
+      "rank": 6,
+      "send_bytes": 298400,
+      "recv_bytes": 268800,
+      "degree": 2
+    },
+    {
+      "id": 7,
+      "rank": 7,
+      "send_bytes": 282144,
+      "recv_bytes": 279936,
+      "degree": 2
+    },
+    {
+      "id": 8,
+      "rank": 8,
+      "send_bytes": 261472,
+      "recv_bytes": 285072,
+      "degree": 2
+    },
+    {
+      "id": 9,
+      "rank": 9,
+      "send_bytes": 288000,
+      "recv_bytes": 271280,
+      "degree": 2
+    },
+    {
+      "id": 10,
+      "rank": 10,
+      "send_bytes": 281088,
+      "recv_bytes": 257936,
+      "degree": 2
+    },
+    {
+      "id": 11,
+      "rank": 11,
+      "send_bytes": 227872,
+      "recv_bytes": 259072,
+      "degree": 2
+    },
+    {
+      "id": 12,
+      "rank": 12,
+      "send_bytes": 237056,
+      "recv_bytes": 230112,
+      "degree": 2
+    },
+    {
+      "id": 13,
+      "rank": 13,
+      "send_bytes": 232352,
+      "recv_bytes": 258672,
+      "degree": 2
+    },
+    {
+      "id": 14,
+      "rank": 14,
+      "send_bytes": 280288,
+      "recv_bytes": 262656,
+      "degree": 2
+    },
+    {
+      "id": 15,
+      "rank": 15,
+      "send_bytes": 292960,
+      "recv_bytes": 271632,
+      "degree": 2
+    },
+    {
+      "id": 16,
+      "rank": 16,
+      "send_bytes": 262976,
+      "recv_bytes": 270656,
+      "degree": 2
+    },
+    {
+      "id": 17,
+      "rank": 17,
+      "send_bytes": 248352,
+      "recv_bytes": 260448,
+      "degree": 2
+    },
+    {
+      "id": 18,
+      "rank": 18,
+      "send_bytes": 257920,
+      "recv_bytes": 249856,
+      "degree": 2
+    },
+    {
+      "id": 19,
+      "rank": 19,
+      "send_bytes": 251360,
+      "recv_bytes": 254208,
+      "degree": 2
+    },
+    {
+      "id": 20,
+      "rank": 20,
+      "send_bytes": 250496,
+      "recv_bytes": 277520,
+      "degree": 2
+    },
+    {
+      "id": 21,
+      "rank": 21,
+      "send_bytes": 303680,
+      "recv_bytes": 249024,
+      "degree": 2
+    },
+    {
+      "id": 22,
+      "rank": 22,
+      "send_bytes": 247552,
+      "recv_bytes": 293888,
+      "degree": 2
+    },
+    {
+      "id": 23,
+      "rank": 23,
+      "send_bytes": 284096,
+      "recv_bytes": 242880,
+      "degree": 2
+    },
+    {
+      "id": 24,
+      "rank": 24,
+      "send_bytes": 238208,
+      "recv_bytes": 253568,
+      "degree": 2
+    },
+    {
+      "id": 25,
+      "rank": 25,
+      "send_bytes": 223040,
+      "recv_bytes": 239296,
+      "degree": 2
+    },
+    {
+      "id": 26,
+      "rank": 26,
+      "send_bytes": 240384,
+      "recv_bytes": 265360,
+      "degree": 2
+    },
+    {
+      "id": 27,
+      "rank": 27,
+      "send_bytes": 307680,
+      "recv_bytes": 263536,
+      "degree": 2
+    },
+    {
+      "id": 28,
+      "rank": 28,
+      "send_bytes": 286688,
+      "recv_bytes": 279776,
+      "degree": 2
+    },
+    {
+      "id": 29,
+      "rank": 29,
+      "send_bytes": 251872,
+      "recv_bytes": 272256,
+      "degree": 2
+    },
+    {
+      "id": 30,
+      "rank": 30,
+      "send_bytes": 257824,
+      "recv_bytes": 258048,
+      "degree": 2
+    },
+    {
+      "id": 31,
+      "rank": 31,
+      "send_bytes": 264224,
+      "recv_bytes": 274736,
+      "degree": 2
+    },
+    {
+      "id": 32,
+      "rank": 32,
+      "send_bytes": 291648,
+      "recv_bytes": 295184,
+      "degree": 2
+    },
+    {
+      "id": 33,
+      "rank": 33,
+      "send_bytes": 326144,
+      "recv_bytes": 253312,
+      "degree": 2
+    },
+    {
+      "id": 34,
+      "rank": 34,
+      "send_bytes": 214976,
+      "recv_bytes": 299456,
+      "degree": 2
+    },
+    {
+      "id": 35,
+      "rank": 35,
+      "send_bytes": 272768,
+      "recv_bytes": 233856,
+      "degree": 2
+    },
+    {
+      "id": 36,
+      "rank": 36,
+      "send_bytes": 252736,
+      "recv_bytes": 255168,
+      "degree": 2
+    },
+    {
+      "id": 37,
+      "rank": 37,
+      "send_bytes": 237568,
+      "recv_bytes": 249024,
+      "degree": 2
+    },
+    {
+      "id": 38,
+      "rank": 38,
+      "send_bytes": 245312,
+      "recv_bytes": 267408,
+      "degree": 2
+    },
+    {
+      "id": 39,
+      "rank": 39,
+      "send_bytes": 297248,
+      "recv_bytes": 243264,
+      "degree": 2
+    },
+    {
+      "id": 40,
+      "rank": 40,
+      "send_bytes": 241216,
+      "recv_bytes": 273408,
+      "degree": 2
+    },
+    {
+      "id": 41,
+      "rank": 41,
+      "send_bytes": 249568,
+      "recv_bytes": 276032,
+      "degree": 2
+    },
+    {
+      "id": 42,
+      "rank": 42,
+      "send_bytes": 310848,
+      "recv_bytes": 277984,
+      "degree": 2
+    },
+    {
+      "id": 43,
+      "rank": 43,
+      "send_bytes": 306400,
+      "recv_bytes": 279584,
+      "degree": 2
+    },
+    {
+      "id": 44,
+      "rank": 44,
+      "send_bytes": 248320,
+      "recv_bytes": 288256,
+      "degree": 2
+    },
+    {
+      "id": 45,
+      "rank": 45,
+      "send_bytes": 270112,
+      "recv_bytes": 250688,
+      "degree": 2
+    },
+    {
+      "id": 46,
+      "rank": 46,
+      "send_bytes": 253056,
+      "recv_bytes": 290656,
+      "degree": 2
+    },
+    {
+      "id": 47,
+      "rank": 47,
+      "send_bytes": 311200,
+      "recv_bytes": 273520,
+      "degree": 2
+    },
+    {
+      "id": 48,
+      "rank": 48,
+      "send_bytes": 293984,
+      "recv_bytes": 268576,
+      "degree": 2
+    },
+    {
+      "id": 49,
+      "rank": 49,
+      "send_bytes": 225952,
+      "recv_bytes": 297200,
+      "degree": 2
+    },
+    {
+      "id": 50,
+      "rank": 50,
+      "send_bytes": 300416,
+      "recv_bytes": 246960,
+      "degree": 2
+    },
+    {
+      "id": 51,
+      "rank": 51,
+      "send_bytes": 267968,
+      "recv_bytes": 258832,
+      "degree": 2
+    },
+    {
+      "id": 52,
+      "rank": 52,
+      "send_bytes": 217248,
+      "recv_bytes": 276736,
+      "degree": 2
+    },
+    {
+      "id": 53,
+      "rank": 53,
+      "send_bytes": 285504,
+      "recv_bytes": 240224,
+      "degree": 2
+    },
+    {
+      "id": 54,
+      "rank": 54,
+      "send_bytes": 263200,
+      "recv_bytes": 268000,
+      "degree": 2
+    },
+    {
+      "id": 55,
+      "rank": 55,
+      "send_bytes": 250496,
+      "recv_bytes": 248192,
+      "degree": 2
+    },
+    {
+      "id": 56,
+      "rank": 56,
+      "send_bytes": 233184,
+      "recv_bytes": 245216,
+      "degree": 2
+    },
+    {
+      "id": 57,
+      "rank": 57,
+      "send_bytes": 239936,
+      "recv_bytes": 248480,
+      "degree": 2
+    },
+    {
+      "id": 58,
+      "rank": 58,
+      "send_bytes": 263776,
+      "recv_bytes": 265760,
+      "degree": 2
+    },
+    {
+      "id": 59,
+      "rank": 59,
+      "send_bytes": 291584,
+      "recv_bytes": 283456,
+      "degree": 2
+    },
+    {
+      "id": 60,
+      "rank": 60,
+      "send_bytes": 303136,
+      "recv_bytes": 273184,
+      "degree": 2
+    },
+    {
+      "id": 61,
+      "rank": 61,
+      "send_bytes": 254784,
+      "recv_bytes": 317824,
+      "degree": 3
+    },
+    {
+      "id": 62,
+      "rank": 62,
+      "send_bytes": 317024,
+      "recv_bytes": 229280,
+      "degree": 2
+    },
+    {
+      "id": 63,
+      "rank": 63,
+      "send_bytes": 109632,
+      "recv_bytes": 158512,
+      "degree": 2
+    }
+  ],
+  "edges": [
+    {
+      "source": 29,
+      "target": 30,
+      "weight": 254848,
+      "count": 36
+    },
+    {
+      "source": 13,
+      "target": 14,
+      "weight": 256320,
+      "count": 36
+    },
+    {
+      "source": 14,
+      "target": 15,
+      "weight": 286624,
+      "count": 36
+    },
+    {
+      "source": 21,
+      "target": 22,
+      "weight": 275616,
+      "count": 36
+    },
+    {
+      "source": 22,
+      "target": 23,
+      "weight": 265824,
+      "count": 36
+    },
+    {
+      "source": 61,
+      "target": 62,
+      "weight": 285904,
+      "count": 36
+    },
+    {
+      "source": 62,
+      "target": 63,
+      "weight": 260400,
+      "count": 36
+    },
+    {
+      "source": 25,
+      "target": 26,
+      "weight": 231712,
+      "count": 36
+    },
+    {
+      "source": 26,
+      "target": 27,
+      "weight": 274032,
+      "count": 36
+    },
+    {
+      "source": 57,
+      "target": 58,
+      "weight": 251856,
+      "count": 36
+    },
+    {
+      "source": 58,
+      "target": 59,
+      "weight": 277680,
+      "count": 36
+    },
+    {
+      "source": 45,
+      "target": 46,
+      "weight": 261584,
+      "count": 36
+    },
+    {
+      "source": 46,
+      "target": 47,
+      "weight": 282128,
+      "count": 36
+    },
+    {
+      "source": 53,
+      "target": 54,
+      "weight": 274352,
+      "count": 36
+    },
+    {
+      "source": 54,
+      "target": 55,
+      "weight": 256848,
+      "count": 36
+    },
+    {
+      "source": 17,
+      "target": 18,
+      "weight": 253136,
+      "count": 36
+    },
+    {
+      "source": 18,
+      "target": 19,
+      "weight": 254640,
+      "count": 36
+    },
+    {
+      "source": 9,
+      "target": 10,
+      "weight": 284544,
+      "count": 36
+    },
+    {
+      "source": 10,
+      "target": 11,
+      "weight": 254480,
+      "count": 36
+    },
+    {
+      "source": 27,
+      "target": 28,
+      "weight": 297184,
+      "count": 36
+    },
+    {
+      "source": 28,
+      "target": 29,
+      "weight": 269280,
+      "count": 36
+    },
+    {
+      "source": 5,
+      "target": 6,
+      "weight": 276928,
+      "count": 36
+    },
+    {
+      "source": 6,
+      "target": 7,
+      "weight": 290272,
+      "count": 36
+    },
+    {
+      "source": 23,
+      "target": 24,
+      "weight": 261152,
+      "count": 36
+    },
+    {
+      "source": 24,
+      "target": 25,
+      "weight": 230624,
+      "count": 36
+    },
+    {
+      "source": 59,
+      "target": 60,
+      "weight": 297360,
+      "count": 36
+    },
+    {
+      "source": 60,
+      "target": 61,
+      "weight": 278960,
+      "count": 36
+    },
+    {
+      "source": 49,
+      "target": 50,
+      "weight": 263184,
+      "count": 36
+    },
+    {
+      "source": 50,
+      "target": 51,
+      "weight": 284192,
+      "count": 36
+    },
+    {
+      "source": 41,
+      "target": 42,
+      "weight": 280208,
+      "count": 36
+    },
+    {
+      "source": 42,
+      "target": 43,
+      "weight": 308624,
+      "count": 36
+    },
+    {
+      "source": 19,
+      "target": 20,
+      "weight": 250928,
+      "count": 36
+    },
+    {
+      "source": 20,
+      "target": 21,
+      "weight": 277088,
+      "count": 36
+    },
+    {
+      "source": 7,
+      "target": 8,
+      "weight": 271808,
+      "count": 36
+    },
+    {
+      "source": 8,
+      "target": 9,
+      "weight": 274736,
+      "count": 36
+    },
+    {
+      "source": 15,
+      "target": 16,
+      "weight": 277968,
+      "count": 36
+    },
+    {
+      "source": 16,
+      "target": 17,
+      "weight": 255664,
+      "count": 36
+    },
+    {
+      "source": 37,
+      "target": 38,
+      "weight": 241440,
+      "count": 36
+    },
+    {
+      "source": 38,
+      "target": 39,
+      "weight": 271280,
+      "count": 36
+    },
+    {
+      "source": 39,
+      "target": 40,
+      "weight": 269232,
+      "count": 36
+    },
+    {
+      "source": 40,
+      "target": 41,
+      "weight": 245392,
+      "count": 36
+    },
+    {
+      "source": 1,
+      "target": 2,
+      "weight": 305840,
+      "count": 36
+    },
+    {
+      "source": 2,
+      "target": 3,
+      "weight": 289744,
+      "count": 36
+    },
+    {
+      "source": 47,
+      "target": 48,
+      "weight": 302592,
+      "count": 36
+    },
+    {
+      "source": 48,
+      "target": 49,
+      "weight": 259968,
+      "count": 36
+    },
+    {
+      "source": 0,
+      "target": 1,
+      "weight": 266928,
+      "count": 36
+    },
+    {
+      "source": 51,
+      "target": 52,
+      "weight": 242608,
+      "count": 36
+    },
+    {
+      "source": 52,
+      "target": 53,
+      "weight": 251376,
+      "count": 36
+    },
+    {
+      "source": 33,
+      "target": 34,
+      "weight": 270560,
+      "count": 36
+    },
+    {
+      "source": 34,
+      "target": 35,
+      "weight": 243872,
+      "count": 36
+    },
+    {
+      "source": 31,
+      "target": 32,
+      "weight": 277936,
+      "count": 36
+    },
+    {
+      "source": 32,
+      "target": 33,
+      "weight": 308896,
+      "count": 36
+    },
+    {
+      "source": 55,
+      "target": 56,
+      "weight": 241840,
+      "count": 36
+    },
+    {
+      "source": 56,
+      "target": 57,
+      "weight": 236560,
+      "count": 36
+    },
+    {
+      "source": 30,
+      "target": 31,
+      "weight": 261024,
+      "count": 36
+    },
+    {
+      "source": 3,
+      "target": 4,
+      "weight": 265600,
+      "count": 36
+    },
+    {
+      "source": 4,
+      "target": 5,
+      "weight": 260400,
+      "count": 36
+    },
+    {
+      "source": 35,
+      "target": 36,
+      "weight": 262752,
+      "count": 36
+    },
+    {
+      "source": 36,
+      "target": 37,
+      "weight": 245152,
+      "count": 36
+    },
+    {
+      "source": 12,
+      "target": 13,
+      "weight": 234704,
+      "count": 36
+    },
+    {
+      "source": 11,
+      "target": 12,
+      "weight": 232464,
+      "count": 36
+    },
+    {
+      "source": 43,
+      "target": 44,
+      "weight": 277360,
+      "count": 36
+    },
+    {
+      "source": 44,
+      "target": 45,
+      "weight": 259216,
+      "count": 36
+    },
+    {
+      "source": 61,
+      "target": 63,
+      "weight": 7744,
+      "count": 1
+    }
+  ],
+  "metadata": {}
+}

@@ -1,0 +1,5 @@
+metric,system,expected,simulated,gap_percent,unit
+avg_power,lassen,9.2,2.9957190240320206,67.43783669530413,MW
+utilization,lassen,15.18797622492284,15.18797622492284,0.0,%
+throughput,lassen,30.0,29.0,3.3333333333333335,jobs/h
+avg_power,frontier,8.4,0.0,100.0,MW

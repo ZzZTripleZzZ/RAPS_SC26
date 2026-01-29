@@ -1,0 +1,9 @@
+weather: false
+time: PT1H
+time_unit: PT1S
+numjobs: 50
+seed: 42
+output: "/app/data/experiments_v5/uc4_frontier_randomAI"
+noui: true
+workload: randomAI
+system: frontier

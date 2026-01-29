@@ -1,0 +1,6 @@
+name: cosp2
+# 使用绝对路径
+binary_name: /app/bin/cosp2-bin
+args: ["-n", "100", "-m", "10"]
+env:
+  OMP_NUM_THREADS: "1"

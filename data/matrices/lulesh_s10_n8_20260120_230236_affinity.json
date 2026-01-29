@@ -1,0 +1,234 @@
+{
+  "num_nodes": 8,
+  "num_edges": 28,
+  "total_bytes": 2125888,
+  "nodes": [
+    {
+      "id": 0,
+      "rank": 0,
+      "send_bytes": 170456,
+      "recv_bytes": 361016,
+      "degree": 7
+    },
+    {
+      "id": 1,
+      "rank": 1,
+      "send_bytes": 228536,
+      "recv_bytes": 302936,
+      "degree": 7
+    },
+    {
+      "id": 2,
+      "rank": 2,
+      "send_bytes": 233816,
+      "recv_bytes": 297656,
+      "degree": 7
+    },
+    {
+      "id": 3,
+      "rank": 3,
+      "send_bytes": 291896,
+      "recv_bytes": 239576,
+      "degree": 7
+    },
+    {
+      "id": 4,
+      "rank": 4,
+      "send_bytes": 239576,
+      "recv_bytes": 291896,
+      "degree": 7
+    },
+    {
+      "id": 5,
+      "rank": 5,
+      "send_bytes": 297656,
+      "recv_bytes": 233816,
+      "degree": 7
+    },
+    {
+      "id": 6,
+      "rank": 6,
+      "send_bytes": 302936,
+      "recv_bytes": 228536,
+      "degree": 7
+    },
+    {
+      "id": 7,
+      "rank": 7,
+      "send_bytes": 361016,
+      "recv_bytes": 170456,
+      "degree": 7
+    }
+  ],
+  "edges": [
+    {
+      "source": 2,
+      "target": 6,
+      "weight": 166096,
+      "count": 52
+    },
+    {
+      "source": 0,
+      "target": 2,
+      "weight": 166096,
+      "count": 52
+    },
+    {
+      "source": 2,
+      "target": 3,
+      "weight": 166096,
+      "count": 52
+    },
+    {
+      "source": 2,
+      "target": 7,
+      "weight": 10736,
+      "count": 32
+    },
+    {
+      "source": 2,
+      "target": 4,
+      "weight": 10736,
+      "count": 32
+    },
+    {
+      "source": 1,
+      "target": 2,
+      "weight": 10736,
+      "count": 32
+    },
+    {
+      "source": 2,
+      "target": 5,
+      "weight": 976,
+      "count": 32
+    },
+    {
+      "source": 3,
+      "target": 7,
+      "weight": 166096,
+      "count": 52
+    },
+    {
+      "source": 5,
+      "target": 7,
+      "weight": 166096,
+      "count": 52
+    },
+    {
+      "source": 6,
+      "target": 7,
+      "weight": 166096,
+      "count": 52
+    },
+    {
+      "source": 4,
+      "target": 7,
+      "weight": 10736,
+      "count": 32
+    },
+    {
+      "source": 1,
+      "target": 7,
+      "weight": 10736,
+      "count": 32
+    },
+    {
+      "source": 0,
+      "target": 7,
+      "weight": 976,
+      "count": 32
+    },
+    {
+      "source": 1,
+      "target": 5,
+      "weight": 166096,
+      "count": 52
+    },
+    {
+      "source": 1,
+      "target": 3,
+      "weight": 166096,
+      "count": 52
+    },
+    {
+      "source": 0,
+      "target": 1,
+      "weight": 166096,
+      "count": 52
+    },
+    {
+      "source": 1,
+      "target": 4,
+      "weight": 10736,
+      "count": 32
+    },
+    {
+      "source": 1,
+      "target": 6,
+      "weight": 976,
+      "count": 32
+    },
+    {
+      "source": 0,
+      "target": 3,
+      "weight": 10736,
+      "count": 32
+    },
+    {
+      "source": 3,
+      "target": 5,
+      "weight": 10736,
+      "count": 32
+    },
+    {
+      "source": 3,
+      "target": 6,
+      "weight": 10736,
+      "count": 32
+    },
+    {
+      "source": 3,
+      "target": 4,
+      "weight": 976,
+      "count": 32
+    },
+    {
+      "source": 0,
+      "target": 4,
+      "weight": 166096,
+      "count": 52
+    },
+    {
+      "source": 4,
+      "target": 6,
+      "weight": 166096,
+      "count": 52
+    },
+    {
+      "source": 4,
+      "target": 5,
+      "weight": 166096,
+      "count": 52
+    },
+    {
+      "source": 0,
+      "target": 6,
+      "weight": 10736,
+      "count": 32
+    },
+    {
+      "source": 0,
+      "target": 5,
+      "weight": 10736,
+      "count": 32
+    },
+    {
+      "source": 5,
+      "target": 6,
+      "weight": 10736,
+      "count": 32
+    }
+  ],
+  "metadata": {}
+}

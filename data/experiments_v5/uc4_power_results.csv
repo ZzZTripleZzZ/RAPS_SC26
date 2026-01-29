@@ -1,0 +1,4 @@
+system,workload,data_type,avg_power_mw,total_energy_mwh,total_cost,jobs_completed,min_power_kw,max_power_kw,std_power_kw
+lassen,real,real,2.9957190240320206,2.9957190240320206,281.5975882590099,29,31497.38,31500.96,1.0392144469100837
+frontier,synthetic_uniform,synthetic,0.0,0.0,0.0,0,,,
+frontier,randomAI,synthetic,21.019224461601095,21.019224461601095,1975.8070993905028,0,0.0,3.585,1.0392214634042158

@@ -1,0 +1,13 @@
+{
+  "shape": [
+    12,
+    8,
+    8
+  ],
+  "num_time_bins": 12,
+  "num_ranks": 8,
+  "time_min": 0.0,
+  "time_max": 1.1349999999999858,
+  "time_bin_size": 0.1,
+  "dtype": "float64"
+}

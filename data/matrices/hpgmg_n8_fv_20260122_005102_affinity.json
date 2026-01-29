@@ -1,0 +1,234 @@
+{
+  "num_nodes": 8,
+  "num_edges": 28,
+  "total_bytes": 120560768,
+  "nodes": [
+    {
+      "id": 0,
+      "rank": 0,
+      "send_bytes": 15856896,
+      "recv_bytes": 15067520,
+      "degree": 7
+    },
+    {
+      "id": 1,
+      "rank": 1,
+      "send_bytes": 14957696,
+      "recv_bytes": 15070464,
+      "degree": 7
+    },
+    {
+      "id": 2,
+      "rank": 2,
+      "send_bytes": 14957696,
+      "recv_bytes": 15070464,
+      "degree": 7
+    },
+    {
+      "id": 3,
+      "rank": 3,
+      "send_bytes": 14957696,
+      "recv_bytes": 15070464,
+      "degree": 7
+    },
+    {
+      "id": 4,
+      "rank": 4,
+      "send_bytes": 14957696,
+      "recv_bytes": 15070464,
+      "degree": 7
+    },
+    {
+      "id": 5,
+      "rank": 5,
+      "send_bytes": 14957696,
+      "recv_bytes": 15070464,
+      "degree": 7
+    },
+    {
+      "id": 6,
+      "rank": 6,
+      "send_bytes": 14957696,
+      "recv_bytes": 15070464,
+      "degree": 7
+    },
+    {
+      "id": 7,
+      "rank": 7,
+      "send_bytes": 14957696,
+      "recv_bytes": 15070464,
+      "degree": 7
+    }
+  ],
+  "edges": [
+    {
+      "source": 0,
+      "target": 3,
+      "weight": 1021824,
+      "count": 1817
+    },
+    {
+      "source": 1,
+      "target": 3,
+      "weight": 9084928,
+      "count": 1750
+    },
+    {
+      "source": 2,
+      "target": 3,
+      "weight": 9084928,
+      "count": 1750
+    },
+    {
+      "source": 3,
+      "target": 4,
+      "weight": 6656,
+      "count": 104
+    },
+    {
+      "source": 3,
+      "target": 5,
+      "weight": 872448,
+      "count": 1750
+    },
+    {
+      "source": 3,
+      "target": 6,
+      "weight": 872448,
+      "count": 1750
+    },
+    {
+      "source": 3,
+      "target": 7,
+      "weight": 9084928,
+      "count": 1750
+    },
+    {
+      "source": 0,
+      "target": 1,
+      "weight": 9234304,
+      "count": 1817
+    },
+    {
+      "source": 1,
+      "target": 2,
+      "weight": 872448,
+      "count": 1750
+    },
+    {
+      "source": 1,
+      "target": 4,
+      "weight": 872448,
+      "count": 1750
+    },
+    {
+      "source": 1,
+      "target": 5,
+      "weight": 9084928,
+      "count": 1750
+    },
+    {
+      "source": 1,
+      "target": 6,
+      "weight": 6656,
+      "count": 104
+    },
+    {
+      "source": 1,
+      "target": 7,
+      "weight": 872448,
+      "count": 1750
+    },
+    {
+      "source": 0,
+      "target": 6,
+      "weight": 1021824,
+      "count": 1817
+    },
+    {
+      "source": 2,
+      "target": 6,
+      "weight": 9084928,
+      "count": 1750
+    },
+    {
+      "source": 4,
+      "target": 6,
+      "weight": 9084928,
+      "count": 1750
+    },
+    {
+      "source": 5,
+      "target": 6,
+      "weight": 872448,
+      "count": 1750
+    },
+    {
+      "source": 6,
+      "target": 7,
+      "weight": 9084928,
+      "count": 1750
+    },
+    {
+      "source": 0,
+      "target": 7,
+      "weight": 156032,
+      "count": 171
+    },
+    {
+      "source": 2,
+      "target": 7,
+      "weight": 872448,
+      "count": 1750
+    },
+    {
+      "source": 4,
+      "target": 7,
+      "weight": 872448,
+      "count": 1750
+    },
+    {
+      "source": 5,
+      "target": 7,
+      "weight": 9084928,
+      "count": 1750
+    },
+    {
+      "source": 0,
+      "target": 4,
+      "weight": 9234304,
+      "count": 1817
+    },
+    {
+      "source": 2,
+      "target": 4,
+      "weight": 872448,
+      "count": 1750
+    },
+    {
+      "source": 4,
+      "target": 5,
+      "weight": 9084928,
+      "count": 1750
+    },
+    {
+      "source": 0,
+      "target": 2,
+      "weight": 9234304,
+      "count": 1817
+    },
+    {
+      "source": 2,
+      "target": 5,
+      "weight": 6656,
+      "count": 104
+    },
+    {
+      "source": 0,
+      "target": 5,
+      "weight": 1021824,
+      "count": 1817
+    }
+  ],
+  "metadata": {}
+}

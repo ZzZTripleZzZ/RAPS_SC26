@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(file:*)",
+      "Bash(find:*)",
+      "Bash(dpkg:*)",
+      "Bash(python3 -c:*)",
+      "Bash(pip install annotated-types)",
+      "Bash(pip install:*)",
+      "Bash(python -c:*)",
+      "Bash(python:*)",
+      "Bash(ls:*)",
+      "Bash(wc -l echo \"\" echo \"=== Sample Affinity Graph ===\" python3 -c \"\nimport json\nwith open\\(''''/app/data/matrices/lulesh_n64_cube_20260121_214715_affinity.json''''\\) as f:\n    data = json.load\\(f\\)\nprint\\(f''''Nodes: {data[\"\"num_nodes\"\"]}''''\\)\nprint\\(f''''Edges: {data[\"\"num_edges\"\"]}''''\\)\nprint\\(f''''Total bytes: {data[\"\"total_bytes\"\"]/1e6:.2f} MB''''\\)\nprint\\(f''''Sample node: {data[\"\"nodes\"\"][0]}''''\\)\nprint\\(f''''Sample edge: {data[\"\"edges\"\"][0]}''''\\)\n\" echo \"\" echo \"=== Sample Dynamic Matrix ===\" python3 -c \"\nimport numpy as np\nm = np.load\\(''''/app/data/matrices/lulesh_n64_cube_20260121_214715_dynamic.npy''''\\)\nprint\\(f''''Shape: {m.shape} \\(time_bins x src x dst\\)''''\\)\nprint\\(f''''Total traffic: {m.sum\\(\\)/1e6:.2f} MB''''\\)\nprint\\(f''''Time bins with traffic: {\\(m.sum\\(axis=\\(1,2\\)\\) > 0\\).sum\\(\\)}''''\\)\n\")",
+      "Bash(git lfs pull:*)",
+      "Bash(apt-get update:*)",
+      "Bash(apt-get install:*)",
+      "Bash(git lfs install:*)",
+      "Bash(git config:*)",
+      "Bash(tee:*)",
+      "Bash(for strat in contiguous random hybrid)",
+      "Bash(do echo \"=== Lassen $strat ===\" python main.py run --system lassen --time 1h --output /app/data/experiments_v6/uc1_lassen_$strat --noui --workload randomAI --allocation $strat)",
+      "Bash(do echo \"=== Frontier $strat ===\" python main.py run --system frontier --time 1h --output /app/data/experiments_v6/uc1_frontier_$strat --noui --workload randomAI --allocation $strat)",
+      "Bash(grep:*)",
+      "Bash(for alloc in contiguous random)",
+      "Bash(do echo \"=== Lassen $alloc ===\" timeout 45 python main.py run --system lassen --workload allocation_test --time 10m --allocation $alloc --numjobs 15 --noui --output /app/data/experiments_network/alloc_lassen_$alloc)",
+      "Bash(for sys in lassen frontier)",
+      "Bash(do for alloc in contiguous random hybrid)",
+      "Bash(head:*)",
+      "WebSearch",
+      "Bash(git add:*)"
+    ]
+  }
+}

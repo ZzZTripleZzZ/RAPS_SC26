@@ -1,0 +1,34 @@
+# Large data files (>100MB)
+data/matrices/*_dynamic.npy
+data/raw_traces/*/stderr.log
+
+# Output directories
+output/
+raps-output-*/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.log

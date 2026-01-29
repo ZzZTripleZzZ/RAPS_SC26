@@ -1,0 +1,189 @@
+{
+  "num_processed": 23,
+  "traces": [
+    {
+      "name": "comd_correct_n8_20260120_231003",
+      "num_ranks": 8,
+      "num_events": 4848,
+      "affinity_json": "/app/data/matrices/comd_correct_n8_20260120_231003_affinity.json",
+      "dynamic_npy": "/app/data/matrices/comd_correct_n8_20260120_231003_dynamic.npy",
+      "static_h5": "/app/data/matrices/comd_correct_n8_20260120_231003.h5"
+    },
+    {
+      "name": "comd_n64_dense_20260121_214717",
+      "num_ranks": 64,
+      "num_events": 38784,
+      "affinity_json": "/app/data/matrices/comd_n64_dense_20260121_214717_affinity.json",
+      "dynamic_npy": "/app/data/matrices/comd_n64_dense_20260121_214717_dynamic.npy",
+      "static_h5": "/app/data/matrices/comd_n64_dense_20260121_214717.h5"
+    },
+    {
+      "name": "comd_n64_scaled_20260121_214308",
+      "num_ranks": 64,
+      "num_events": 38784,
+      "affinity_json": "/app/data/matrices/comd_n64_scaled_20260121_214308_affinity.json",
+      "dynamic_npy": "/app/data/matrices/comd_n64_scaled_20260121_214308_dynamic.npy",
+      "static_h5": "/app/data/matrices/comd_n64_scaled_20260121_214308.h5"
+    },
+    {
+      "name": "cosp2_n128_sparse_20260121_215534",
+      "num_ranks": 129,
+      "num_events": 240,
+      "affinity_json": "/app/data/matrices/cosp2_n128_sparse_20260121_215534_affinity.json",
+      "dynamic_npy": "/app/data/matrices/cosp2_n128_sparse_20260121_215534_dynamic.npy",
+      "static_h5": "/app/data/matrices/cosp2_n128_sparse_20260121_215534.h5"
+    },
+    {
+      "name": "cosp2_n128_sparse_20260122_004059",
+      "num_ranks": 129,
+      "num_events": 227,
+      "affinity_json": "/app/data/matrices/cosp2_n128_sparse_20260122_004059_affinity.json",
+      "dynamic_npy": "/app/data/matrices/cosp2_n128_sparse_20260122_004059_dynamic.npy",
+      "static_h5": "/app/data/matrices/cosp2_n128_sparse_20260122_004059.h5"
+    },
+    {
+      "name": "cosp2_n64_sparse_20260121_215236",
+      "num_ranks": 64,
+      "num_events": 2269,
+      "affinity_json": "/app/data/matrices/cosp2_n64_sparse_20260121_215236_affinity.json",
+      "dynamic_npy": "/app/data/matrices/cosp2_n64_sparse_20260121_215236_dynamic.npy",
+      "static_h5": "/app/data/matrices/cosp2_n64_sparse_20260121_215236.h5"
+    },
+    {
+      "name": "cosp2_n8_sparse_20260122_005602",
+      "num_ranks": 8,
+      "num_events": 798,
+      "affinity_json": "/app/data/matrices/cosp2_n8_sparse_20260122_005602_affinity.json",
+      "dynamic_npy": "/app/data/matrices/cosp2_n8_sparse_20260122_005602_dynamic.npy",
+      "static_h5": "/app/data/matrices/cosp2_n8_sparse_20260122_005602.h5"
+    },
+    {
+      "name": "hpgmg_n128_fv_20260121_215033",
+      "num_ranks": 127,
+      "num_events": 391731,
+      "affinity_json": "/app/data/matrices/hpgmg_n128_fv_20260121_215033_affinity.json",
+      "dynamic_npy": "/app/data/matrices/hpgmg_n128_fv_20260121_215033_dynamic.npy",
+      "static_h5": "/app/data/matrices/hpgmg_n128_fv_20260121_215033.h5"
+    },
+    {
+      "name": "hpgmg_n128_fv_20260122_003559",
+      "num_ranks": 127,
+      "num_events": 73173,
+      "affinity_json": "/app/data/matrices/hpgmg_n128_fv_20260122_003559_affinity.json",
+      "dynamic_npy": "/app/data/matrices/hpgmg_n128_fv_20260122_003559_dynamic.npy",
+      "static_h5": "/app/data/matrices/hpgmg_n128_fv_20260122_003559.h5"
+    },
+    {
+      "name": "hpgmg_n64_fv_20260121_214733",
+      "num_ranks": 64,
+      "num_events": 2403959,
+      "affinity_json": "/app/data/matrices/hpgmg_n64_fv_20260121_214733_affinity.json",
+      "dynamic_npy": "/app/data/matrices/hpgmg_n64_fv_20260121_214733_dynamic.npy",
+      "static_h5": "/app/data/matrices/hpgmg_n64_fv_20260121_214733.h5"
+    },
+    {
+      "name": "hpgmg_n8_fv_20260122_005102",
+      "num_ranks": 8,
+      "num_events": 42885,
+      "affinity_json": "/app/data/matrices/hpgmg_n8_fv_20260122_005102_affinity.json",
+      "dynamic_npy": "/app/data/matrices/hpgmg_n8_fv_20260122_005102_dynamic.npy",
+      "static_h5": "/app/data/matrices/hpgmg_n8_fv_20260122_005102.h5"
+    },
+    {
+      "name": "lulesh_n64_cube_20260121_214715",
+      "num_ranks": 64,
+      "num_events": 26316,
+      "affinity_json": "/app/data/matrices/lulesh_n64_cube_20260121_214715_affinity.json",
+      "dynamic_npy": "/app/data/matrices/lulesh_n64_cube_20260121_214715_dynamic.npy",
+      "static_h5": "/app/data/matrices/lulesh_n64_cube_20260121_214715.h5"
+    },
+    {
+      "name": "lulesh_n64_scaled_20260121_214306",
+      "num_ranks": 64,
+      "num_events": 34776,
+      "affinity_json": "/app/data/matrices/lulesh_n64_scaled_20260121_214306_affinity.json",
+      "dynamic_npy": "/app/data/matrices/lulesh_n64_scaled_20260121_214306_dynamic.npy",
+      "static_h5": "/app/data/matrices/lulesh_n64_scaled_20260121_214306.h5"
+    },
+    {
+      "name": "lulesh_s10_n8_20260120_230236",
+      "num_ranks": 8,
+      "num_events": 1136,
+      "affinity_json": "/app/data/matrices/lulesh_s10_n8_20260120_230236_affinity.json",
+      "dynamic_npy": "/app/data/matrices/lulesh_s10_n8_20260120_230236_dynamic.npy",
+      "static_h5": "/app/data/matrices/lulesh_s10_n8_20260120_230236.h5"
+    },
+    {
+      "name": "lulesh_s10_n8_20260120_230319",
+      "num_ranks": 8,
+      "num_events": 1136,
+      "affinity_json": "/app/data/matrices/lulesh_s10_n8_20260120_230319_affinity.json",
+      "dynamic_npy": "/app/data/matrices/lulesh_s10_n8_20260120_230319_dynamic.npy",
+      "static_h5": "/app/data/matrices/lulesh_s10_n8_20260120_230319.h5"
+    },
+    {
+      "name": "lulesh_s10_n8_20260120_230454",
+      "num_ranks": 8,
+      "num_events": 1136,
+      "affinity_json": "/app/data/matrices/lulesh_s10_n8_20260120_230454_affinity.json",
+      "dynamic_npy": "/app/data/matrices/lulesh_s10_n8_20260120_230454_dynamic.npy",
+      "static_h5": "/app/data/matrices/lulesh_s10_n8_20260120_230454.h5"
+    },
+    {
+      "name": "lulesh_s10_n8_20260120_230654",
+      "num_ranks": 8,
+      "num_events": 1136,
+      "affinity_json": "/app/data/matrices/lulesh_s10_n8_20260120_230654_affinity.json",
+      "dynamic_npy": "/app/data/matrices/lulesh_s10_n8_20260120_230654_dynamic.npy",
+      "static_h5": "/app/data/matrices/lulesh_s10_n8_20260120_230654.h5"
+    },
+    {
+      "name": "lulesh_s10_n8_20260120_231003",
+      "num_ranks": 8,
+      "num_events": 1136,
+      "affinity_json": "/app/data/matrices/lulesh_s10_n8_20260120_231003_affinity.json",
+      "dynamic_npy": "/app/data/matrices/lulesh_s10_n8_20260120_231003_dynamic.npy",
+      "static_h5": "/app/data/matrices/lulesh_s10_n8_20260120_231003.h5"
+    },
+    {
+      "name": "lulesh_s20_n8_20260120_230237",
+      "num_ranks": 8,
+      "num_events": 1136,
+      "affinity_json": "/app/data/matrices/lulesh_s20_n8_20260120_230237_affinity.json",
+      "dynamic_npy": "/app/data/matrices/lulesh_s20_n8_20260120_230237_dynamic.npy",
+      "static_h5": "/app/data/matrices/lulesh_s20_n8_20260120_230237.h5"
+    },
+    {
+      "name": "lulesh_s20_n8_20260120_230319",
+      "num_ranks": 8,
+      "num_events": 1136,
+      "affinity_json": "/app/data/matrices/lulesh_s20_n8_20260120_230319_affinity.json",
+      "dynamic_npy": "/app/data/matrices/lulesh_s20_n8_20260120_230319_dynamic.npy",
+      "static_h5": "/app/data/matrices/lulesh_s20_n8_20260120_230319.h5"
+    },
+    {
+      "name": "lulesh_s20_n8_20260120_230454",
+      "num_ranks": 8,
+      "num_events": 1136,
+      "affinity_json": "/app/data/matrices/lulesh_s20_n8_20260120_230454_affinity.json",
+      "dynamic_npy": "/app/data/matrices/lulesh_s20_n8_20260120_230454_dynamic.npy",
+      "static_h5": "/app/data/matrices/lulesh_s20_n8_20260120_230454.h5"
+    },
+    {
+      "name": "lulesh_s20_n8_20260120_230654",
+      "num_ranks": 8,
+      "num_events": 1136,
+      "affinity_json": "/app/data/matrices/lulesh_s20_n8_20260120_230654_affinity.json",
+      "dynamic_npy": "/app/data/matrices/lulesh_s20_n8_20260120_230654_dynamic.npy",
+      "static_h5": "/app/data/matrices/lulesh_s20_n8_20260120_230654.h5"
+    },
+    {
+      "name": "lulesh_s20_n8_20260120_231003",
+      "num_ranks": 8,
+      "num_events": 1136,
+      "affinity_json": "/app/data/matrices/lulesh_s20_n8_20260120_231003_affinity.json",
+      "dynamic_npy": "/app/data/matrices/lulesh_s20_n8_20260120_231003_dynamic.npy",
+      "static_h5": "/app/data/matrices/lulesh_s20_n8_20260120_231003.h5"
+    }
+  ]
+}

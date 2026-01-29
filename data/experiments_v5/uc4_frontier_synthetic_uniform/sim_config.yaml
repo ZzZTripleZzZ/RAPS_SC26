@@ -1,0 +1,13 @@
+weather: false
+time: PT1H
+time_unit: PT1S
+numjobs: 50
+seed: 42
+output: "/app/data/experiments_v5/uc4_frontier_synthetic_uniform"
+noui: true
+workload: synthetic
+jobsize_distribution:
+  - uniform
+walltime_distribution:
+  - uniform
+system: frontier

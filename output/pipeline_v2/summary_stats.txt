@@ -1,0 +1,16 @@
+============================================================
+SC26 HPC Digital Twin - Results Summary
+============================================================
+
+Total experiments: 945
+Real traces: 621
+Synthetic: 324
+
+KEY FINDINGS:
+----------------------------------------
+Lassen: MINIMAL achieves lowest latency (0.9μs)
+Frontier: MINIMAL achieves lowest latency (0.7μs)
+Placement: locality reduces cost by 12.9%
+Power: job_packing saves 2.9% vs baseline
+
+============================================================

@@ -1,0 +1,6 @@
+name: hpgmg-fv
+# 使用绝对路径，不再依赖相对路径
+binary_name: /app/bin/hpgmg-fv
+args: ["6", "8"]
+env:
+  OMP_NUM_THREADS: "1"

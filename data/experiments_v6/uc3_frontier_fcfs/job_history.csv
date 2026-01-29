@@ -1,0 +1,2 @@
+id,name,account,num_nodes,scheduled_nodes,run_time,submit_time,start_time,end_time,current_state,avg_cpu_usage,avg_gpu_usage,avg_ntx_usage,avg_nrx_usage,avg_node_power,max_node_power,energy
+66146,User-Test LLM,llmUser,8,"[3712, 3713, 3714, 3715, 3716, 3717, 3718, 3719]",2052,0,0,2053,JobState.COMPLETED,1,0.8,,,1231.4897959183982,1231.4897959183675,20216136.489796422

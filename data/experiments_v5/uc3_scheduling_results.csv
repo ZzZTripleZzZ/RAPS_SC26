@@ -1,0 +1,6 @@
+system,policy,backfill,data_type,jobs_completed,throughput,avg_queue,avg_power_mw,total_energy_mwh
+lassen,replay,none,real,29,29.0,0,2.9957190240320206,2.9957190240320206
+frontier,fcfs,none,synthetic,0,0.0,0,0.0,0.0
+frontier,sjf,none,synthetic,0,0.0,0,0.0,0.0
+frontier,fcfs,easy,synthetic,0,0.0,0,0.0,0.0
+frontier,fcfs,firstfit,synthetic,0,0.0,0,0.0,0.0

@@ -1,0 +1,6 @@
+system,allocation,data_type,jobs_completed,throughput,avg_power_mw,avg_wait_time
+lassen,contiguous,real,29,29.0,2.9957190240320206,22543.827586206895
+lassen,random,real,29,29.0,2.9957190240320206,22543.827586206895
+frontier,contiguous,synthetic,0,0.0,0.0,0.0
+frontier,random,synthetic,0,0.0,0.0,0.0
+frontier,hybrid,synthetic,0,0.0,0.0,0.0

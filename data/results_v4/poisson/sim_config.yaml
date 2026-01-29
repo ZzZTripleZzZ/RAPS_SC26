@@ -1,0 +1,13 @@
+simulate_network: true
+weather: false
+start: "2019-08-22T00:00:00Z"
+time: PT2H
+time_unit: PT1S
+output: "/app/data/results_v4/poisson"
+noui: true
+replay:
+  - "/app/data/lassen/repo/Lassen-Supercomputer-Job-Dataset"
+workload: replay
+policy: replay
+arrival: poisson
+system: lassen

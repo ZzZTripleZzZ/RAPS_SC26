@@ -1,0 +1,9 @@
+system,workload,data_type,jobs_completed,avg_power_mw,total_energy_mwh,throughput
+lassen,idle,synthetic,0,2.7796,0.0,0.0
+lassen,random,synthetic,0,5.8868,0.0,0.0
+lassen,randomAI,synthetic,0,5.4054,0.0,0.0
+lassen,peak,synthetic,0,8.8137,0.0,0.0
+frontier,idle,synthetic,0,7.3065,0.0,0.0
+frontier,random,synthetic,0,14.7604,0.0,0.0
+frontier,randomAI,synthetic,3,20.1233,0.0,3.0
+frontier,peak,synthetic,0,28.2279,0.0,0.0

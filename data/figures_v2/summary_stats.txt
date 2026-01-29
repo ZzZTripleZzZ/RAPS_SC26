@@ -1,0 +1,26 @@
+======================================================================
+SC26 HPC Digital Twin - Pipeline v2.0 Summary Statistics
+======================================================================
+
+Total experiments: 945
+Real mini-app experiments: 621
+Synthetic experiments: 324
+
+Use Case Breakdown:
+  - adaptive_routing: 175 experiments
+  - node_placement: 280 experiments
+  - scheduling: 210 experiments
+  - power: 280 experiments
+
+Key Findings:
+
+  Lassen: Best routing = MINIMAL (latency: 0.88μs)
+  Frontier: Best routing = MINIMAL (latency: 0.74μs)
+
+  Best placement strategy: locality (12.9% cost reduction)
+
+  Best scheduler: FCFS (7.6% utilization)
+
+  Best power strategy: job_packing (2.9% savings)
+
+======================================================================

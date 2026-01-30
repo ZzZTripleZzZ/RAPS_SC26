@@ -6,6 +6,7 @@ Supports two tracing backends:
 1. SST-DUMPI (preferred): Standard HPC trace format, widely compatible
 2. Custom libtracer.so (fallback): Lightweight MPI interceptor
 
+
 Usage:
     python generate_traces.py [--backend dumpi|tracer]
 """

@@ -704,10 +704,13 @@ def run_inter_job_interference_experiments(
                         slowdown_factor = 1.0
 
                     # 4. Calculate energy overhead
-                    # Energy overhead due to slowdown
+                    # Energy is proportional to runtime: if job runs slowdown_factor times slower,
+                    # it consumes approximately slowdown_factor times more energy
+                    # Energy overhead % = (slowdown_factor - 1) * 100
                     avg_baseline_util = np.mean([m['max_link_util'] for m in baseline_metrics])
                     congestion_increase = (combined_stats['max'] - avg_baseline_util) / max(avg_baseline_util, 0.01)
-                    energy_overhead_pct = congestion_increase * 100
+                    # FIX: Energy overhead based on slowdown, not congestion increase
+                    energy_overhead_pct = (slowdown_factor - 1) * 100 if slowdown_factor > 1.0 else 0.0
 
                     # 5. Record results
                     results.append({

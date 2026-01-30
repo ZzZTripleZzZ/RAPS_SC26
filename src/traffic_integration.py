@@ -152,6 +152,7 @@ def traffic_matrix_to_link_loads(
     routing_algorithm: str = "minimal",
     dragonfly_params: Optional[Dict] = None,
     fattree_params: Optional[Dict] = None,
+    link_loads: Optional[Dict] = None,
 ) -> Dict[Tuple[str, str], float]:
     """
     Convert a traffic matrix directly to link loads.
@@ -161,6 +162,7 @@ def traffic_matrix_to_link_loads(
 
     Args:
         traffic_matrix: 2D array of bytes transferred
+        link_loads: Optional existing link loads (for adaptive routing with interference)
         graph: NetworkX graph of the topology
         host_mapping: Dict mapping rank index to host name
         routing_algorithm: 'minimal', 'ugal', 'valiant', 'ecmp'
@@ -173,7 +175,13 @@ def traffic_matrix_to_link_loads(
     import networkx as nx
 
     n = traffic_matrix.shape[0]
-    link_loads = {tuple(sorted(e)): 0.0 for e in graph.edges()}
+
+    # Use provided link_loads or create new one
+    if link_loads is None:
+        link_loads = {tuple(sorted(e)): 0.0 for e in graph.edges()}
+    else:
+        # Make a copy to avoid modifying the input
+        link_loads = link_loads.copy()
 
     # Get routing function based on algorithm
     if routing_algorithm in ("ugal", "valiant") and dragonfly_params:
@@ -475,6 +483,273 @@ def events_to_dynamic_matrix(
 
 
 # ==========================================
+# Template-based Traffic Matrix Scaling
+# ==========================================
+
+class TrafficMatrixTemplate:
+    """
+    Encapsulates a mini-app traffic matrix as a reusable template.
+
+    The template can be "tiled" onto jobs of any size, preserving the
+    communication structure while scaling to match real workload traffic volumes.
+
+    This approach does NOT classify jobs - it simply asks:
+    "What if this job's communication looked like <mini-app>?"
+    """
+
+    def __init__(self, matrix: np.ndarray, name: str, source_path: Optional[Path] = None):
+        """
+        Args:
+            matrix: The mini-app's traffic matrix (e.g., 64x64 from LULESH)
+            name: Identifier for this template (e.g., "lulesh", "hpgmg")
+            source_path: Optional path to the original matrix file
+        """
+        self.matrix = matrix.astype(np.float64)
+        self.name = name
+        self.source_path = source_path
+        self.n_template = matrix.shape[0]
+
+        # Precompute normalized version (sum = 1)
+        total = np.sum(self.matrix)
+        if total > 0:
+            self.normalized = self.matrix / total
+        else:
+            self.normalized = self.matrix.copy()
+
+        # Extract statistics
+        self._compute_statistics()
+
+    def _compute_statistics(self):
+        """Compute statistics about this template."""
+        nonzero = self.matrix[self.matrix > 0]
+
+        self.stats = {
+            "name": self.name,
+            "template_size": self.n_template,
+            "total_bytes": float(np.sum(self.matrix)),
+            "num_edges": int(np.count_nonzero(self.matrix)),
+            "sparsity": float(1 - np.count_nonzero(self.matrix) / self.matrix.size),
+            "avg_edge_weight": float(np.mean(nonzero)) if len(nonzero) > 0 else 0,
+            "std_edge_weight": float(np.std(nonzero)) if len(nonzero) > 0 else 0,
+        }
+
+    def tile_to_size(self, target_nodes: int, total_traffic_bytes: float) -> np.ndarray:
+        """
+        Tile this template to create a traffic matrix for a larger job.
+
+        The template is repeated like tiles on a floor:
+        - Nodes 0 to n_template-1 use row/col 0 to n_template-1
+        - Nodes n_template to 2*n_template-1 wrap around and reuse row/col 0 to n_template-1
+        - And so on...
+
+        Args:
+            target_nodes: Number of nodes in the target job
+            total_traffic_bytes: Total traffic volume (from real workload's ib_tx)
+
+        Returns:
+            A target_nodes x target_nodes traffic matrix
+        """
+        # Calculate how many times we need to tile
+        repeats = (target_nodes + self.n_template - 1) // self.n_template
+
+        # Tile the normalized matrix
+        tiled = np.tile(self.normalized, (repeats, repeats))
+
+        # Crop to target size
+        result = tiled[:target_nodes, :target_nodes].copy()
+
+        # Clear diagonal (no self-communication)
+        np.fill_diagonal(result, 0)
+
+        # Re-normalize after cropping (cropping may have changed the sum)
+        current_sum = np.sum(result)
+        if current_sum > 0:
+            result = result / current_sum * total_traffic_bytes
+
+        return result
+
+    def __repr__(self):
+        return f"TrafficMatrixTemplate(name='{self.name}', size={self.n_template}x{self.n_template})"
+
+
+def load_template(matrix_path: Path, name: Optional[str] = None) -> TrafficMatrixTemplate:
+    """
+    Load a traffic matrix template from file.
+
+    Args:
+        matrix_path: Path to .npy or .h5 file
+        name: Optional name (defaults to filename stem)
+
+    Returns:
+        TrafficMatrixTemplate instance
+    """
+    if name is None:
+        name = matrix_path.stem
+
+    if matrix_path.suffix == ".npy":
+        matrix = np.load(matrix_path)
+    elif matrix_path.suffix == ".h5":
+        import h5py
+        with h5py.File(matrix_path, 'r') as f:
+            matrix = f["traffic_matrix"][:]
+    else:
+        raise ValueError(f"Unsupported format: {matrix_path.suffix}")
+
+    # Handle 3D matrices (dynamic) by summing over time
+    if matrix.ndim == 3:
+        matrix = np.sum(matrix, axis=0)
+
+    return TrafficMatrixTemplate(matrix, name, matrix_path)
+
+
+def load_all_templates(matrix_dir: Path) -> Dict[str, TrafficMatrixTemplate]:
+    """
+    Load all traffic matrix templates from a directory.
+
+    Args:
+        matrix_dir: Directory containing .npy or .h5 files
+
+    Returns:
+        Dict mapping template name to TrafficMatrixTemplate
+    """
+    templates = {}
+
+    for ext in ["*.npy", "*.h5"]:
+        for path in matrix_dir.glob(ext):
+            # Skip dynamic matrices (they have _dynamic in name)
+            if "_dynamic" in path.stem:
+                continue
+            try:
+                template = load_template(path)
+                templates[template.name] = template
+            except Exception as e:
+                print(f"Warning: Could not load {path}: {e}")
+
+    return templates
+
+
+def get_job_total_traffic(job) -> Tuple[float, float]:
+    """
+    Extract total TX and RX traffic from a RAPS Job object.
+
+    Args:
+        job: RAPS Job object with ntx_trace and nrx_trace
+
+    Returns:
+        Tuple of (total_tx_bytes, total_rx_bytes)
+    """
+    trace_quanta = getattr(job, 'trace_quanta', 15)  # Default 15 seconds
+
+    ntx_trace = getattr(job, 'ntx_trace', None) or []
+    nrx_trace = getattr(job, 'nrx_trace', None) or []
+
+    # ntx_trace values are bytes per trace_quanta interval
+    total_tx = sum(ntx_trace) if ntx_trace else 0
+    total_rx = sum(nrx_trace) if nrx_trace else 0
+
+    return float(total_tx), float(total_rx)
+
+
+def apply_template_to_job(template: TrafficMatrixTemplate, job) -> Dict[str, Any]:
+    """
+    Apply a traffic matrix template to a real workload job.
+
+    This creates a traffic matrix that:
+    - Has the communication STRUCTURE of the mini-app template
+    - Has the communication VOLUME of the real job
+    - Has the SIZE matching the real job's node count
+
+    Args:
+        template: The mini-app template to apply
+        job: RAPS Job object from real workload
+
+    Returns:
+        Dict containing:
+        - traffic_matrix: The generated matrix
+        - job_id: Original job ID
+        - template_name: Which template was used
+        - metadata: Additional info
+    """
+    nodes = job.nodes_required
+    total_tx, total_rx = get_job_total_traffic(job)
+
+    # Use average of TX and RX (they should be similar for symmetric communication)
+    total_traffic = (total_tx + total_rx) / 2
+
+    # If no traffic data, use a default based on job size and duration
+    if total_traffic == 0:
+        # Estimate: 1 GB per node per hour
+        duration = getattr(job, 'expected_run_time', 3600)
+        total_traffic = nodes * 1e9 * (duration / 3600)
+
+    # Generate the traffic matrix
+    traffic_matrix = template.tile_to_size(nodes, total_traffic)
+
+    return {
+        "traffic_matrix": traffic_matrix,
+        "job_id": getattr(job, 'id', None),
+        "job_name": getattr(job, 'name', 'unknown'),
+        "template_name": template.name,
+        "num_nodes": nodes,
+        "total_traffic_bytes": total_traffic,
+        "original_tx": total_tx,
+        "original_rx": total_rx,
+    }
+
+
+def apply_all_templates_to_job(templates: Dict[str, TrafficMatrixTemplate],
+                                job) -> Dict[str, Dict[str, Any]]:
+    """
+    Apply all available templates to a single job.
+
+    This enables what-if analysis: "How would network behave if this job
+    communicated like LULESH? Like HPGMG? Like CoSP2?"
+
+    Args:
+        templates: Dict of template_name -> TrafficMatrixTemplate
+        job: RAPS Job object
+
+    Returns:
+        Dict mapping template_name -> result from apply_template_to_job
+    """
+    results = {}
+    for name, template in templates.items():
+        results[name] = apply_template_to_job(template, job)
+    return results
+
+
+def batch_apply_template(template: TrafficMatrixTemplate,
+                         jobs: List,
+                         progress: bool = True) -> List[Dict[str, Any]]:
+    """
+    Apply a single template to multiple jobs.
+
+    Args:
+        template: The template to apply
+        jobs: List of RAPS Job objects
+        progress: Whether to show progress bar
+
+    Returns:
+        List of results from apply_template_to_job
+    """
+    results = []
+
+    iterator = jobs
+    if progress:
+        try:
+            from tqdm import tqdm
+            iterator = tqdm(jobs, desc=f"Applying {template.name}")
+        except ImportError:
+            pass
+
+    for job in iterator:
+        result = apply_template_to_job(template, job)
+        results.append(result)
+
+    return results
+
+
+# ==========================================
 # Validation and Testing
 # ==========================================
 def validate_traffic_matrix(matrix: np.ndarray) -> Dict[str, Any]:
@@ -514,6 +789,7 @@ def validate_traffic_matrix(matrix: np.ndarray) -> Dict[str, Any]:
 if __name__ == "__main__":
     # Test with a sample traffic matrix
     print("Testing traffic integration module...")
+    print("=" * 60)
 
     # Create test matrices
     n = 64
@@ -546,3 +822,84 @@ if __name__ == "__main__":
 
     print("\nValidation test:")
     print(validate_traffic_matrix(all_to_all))
+
+    # ==========================================
+    # Test Template-based Scaling (NEW)
+    # ==========================================
+    print("\n" + "=" * 60)
+    print("Testing Template-based Traffic Matrix Scaling")
+    print("=" * 60)
+
+    # Create a template from the stencil pattern (simulating a mini-app)
+    print("\n1. Creating template from 64-node stencil pattern...")
+    template = TrafficMatrixTemplate(stencil, name="test_stencil")
+    print(f"   Template: {template}")
+    print(f"   Stats: {template.stats}")
+
+    # Tile to different sizes
+    print("\n2. Tiling template to different job sizes...")
+
+    test_cases = [
+        (64, 1e9),    # Same size, 1 GB traffic
+        (128, 2e9),   # 2x size, 2 GB traffic
+        (256, 10e9),  # 4x size, 10 GB traffic
+        (100, 5e9),   # Non-power-of-2, 5 GB traffic
+    ]
+
+    for target_nodes, total_traffic in test_cases:
+        matrix = template.tile_to_size(target_nodes, total_traffic)
+        print(f"\n   Target: {target_nodes} nodes, {total_traffic/1e9:.1f} GB")
+        print(f"   Result shape: {matrix.shape}")
+        print(f"   Result sum: {np.sum(matrix)/1e9:.2f} GB")
+        print(f"   Non-zero edges: {np.count_nonzero(matrix)}")
+        print(f"   Sparsity: {1 - np.count_nonzero(matrix)/matrix.size:.2%}")
+
+    # Test with mock job
+    print("\n3. Testing apply_template_to_job with mock job...")
+
+    class MockJob:
+        def __init__(self, job_id, nodes, ntx_trace, nrx_trace):
+            self.id = job_id
+            self.name = f"mock_job_{job_id}"
+            self.nodes_required = nodes
+            self.ntx_trace = ntx_trace
+            self.nrx_trace = nrx_trace
+            self.trace_quanta = 15
+            self.expected_run_time = 3600
+
+    mock_job = MockJob(
+        job_id=12345,
+        nodes=256,
+        ntx_trace=[1e8] * 100,   # 100 intervals * 100 MB = 10 GB TX
+        nrx_trace=[1e8] * 100,   # 100 intervals * 100 MB = 10 GB RX
+    )
+
+    result = apply_template_to_job(template, mock_job)
+    print(f"   Job ID: {result['job_id']}")
+    print(f"   Template: {result['template_name']}")
+    print(f"   Nodes: {result['num_nodes']}")
+    print(f"   Total traffic: {result['total_traffic_bytes']/1e9:.2f} GB")
+    print(f"   Matrix shape: {result['traffic_matrix'].shape}")
+    print(f"   Matrix sum: {np.sum(result['traffic_matrix'])/1e9:.2f} GB")
+
+    # Test loading templates from directory
+    print("\n4. Testing load_all_templates...")
+    matrix_dir = Path("/app/data/matrices")
+    if matrix_dir.exists():
+        templates = load_all_templates(matrix_dir)
+        print(f"   Found {len(templates)} templates: {list(templates.keys())}")
+
+        if templates:
+            # Apply all templates to mock job
+            print("\n5. Applying all templates to mock job (what-if analysis)...")
+            all_results = apply_all_templates_to_job(templates, mock_job)
+            for name, res in all_results.items():
+                mat = res['traffic_matrix']
+                sparsity = 1 - np.count_nonzero(mat) / mat.size
+                print(f"   {name}: {mat.shape}, sparsity={sparsity:.2%}")
+    else:
+        print(f"   Directory {matrix_dir} not found, skipping...")
+
+    print("\n" + "=" * 60)
+    print("All tests completed!")
+    print("=" * 60)

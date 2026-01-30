@@ -27,7 +27,15 @@
       "Bash(do for alloc in contiguous random hybrid)",
       "Bash(head:*)",
       "WebSearch",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(du:*)",
+      "Bash(git remote add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nAdd template-based traffic matrix experiments\n\nThis commit implements a comprehensive what-if analysis framework that\ncombines real HPC workload data \\(Lassen/Frontier\\) with mini-app\ncommunication patterns \\(LULESH, CoMD, HPGMG, CoSP2\\).\n\nKey features:\n- Template scaling: tile mini-app traffic matrices to arbitrary job sizes\n- Traffic integration: merge real workload metadata with synthetic patterns\n- Four use cases: adaptive routing, node placement, scheduling, power analysis\n- Complete visualization pipeline with 9 publication-quality figures\n\nImplementation:\n- src/traffic_integration.py: Core template scaling and analysis\n- src/run_template_experiments.py: Main experiment pipeline\n- All use cases generate CSV results and PNG visualizations\n\nResults show significant differences between communication patterns:\n- LULESH \\(stencil\\) causes highest network utilization\n- CoSP2 \\(sparse\\) has lowest congestion\n- Random allocation 1.7x worse than contiguous on Lassen\n- Backfill scheduling reduces slowdown by 15%\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git push:*)",
+      "Bash(git rm:*)",
+      "Bash(git commit --amend -m \"$\\(cat <<''''EOF''''\nAdd template-based traffic matrix experiments\n\nThis commit implements a comprehensive what-if analysis framework that\ncombines real HPC workload data \\(Lassen/Frontier\\) with mini-app\ncommunication patterns \\(LULESH, CoMD, HPGMG, CoSP2\\).\n\nKey features:\n- Template scaling: tile mini-app traffic matrices to arbitrary job sizes\n- Traffic integration: merge real workload metadata with synthetic patterns\n- Four use cases: adaptive routing, node placement, scheduling, power analysis\n- Complete visualization pipeline with 9 publication-quality figures\n\nImplementation:\n- src/traffic_integration.py: Core template scaling and analysis\n- src/run_template_experiments.py: Main experiment pipeline\n- All use cases generate CSV results and PNG visualizations\n\nResults show significant differences between communication patterns:\n- LULESH \\(stencil\\) causes highest network utilization\n- CoSP2 \\(sparse\\) has lowest congestion\n- Random allocation 1.7x worse than contiguous on Lassen\n- Backfill scheduling reduces slowdown by 15%\n\nNote: Large dynamic matrices \\(>100MB\\) excluded via .gitignore\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\nEOF\n\\)\" --no-edit)",
+      "Bash(git ls-tree:*)",
+      "Bash(git commit:*)"
     ]
   }
 }

@@ -2069,6 +2069,79 @@ def plot_summary_comparison(df: pd.DataFrame, save_path: Path):
     print(f"Saved: {save_path}")
 
 
+def plot_congestion_vs_message_size(df_placement: pd.DataFrame, save_path: Path):
+    """
+    NEW: Plot showing network congestion as a function of message size/traffic
+    for different allocation policies. This addresses the "easy win" mentioned
+    in the RAPS features comment - showing how allocation policy affects
+    network bandwidth utilization at different scales.
+
+    This visualization helps answer: "Should we use contiguous or random
+    allocation for jobs with different message sizes on Frontier?"
+    """
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+    # Calculate average traffic per node (proxy for message size)
+    df = df_placement.copy()
+    df['avg_traffic_per_node_gb'] = df['total_traffic_gb'] / df['num_nodes']
+
+    systems = ['lassen', 'frontier']
+    allocation_strategies = ['contiguous', 'random']
+
+    for idx, system in enumerate(systems):
+        ax = axes[idx]
+        system_df = df[df['system'] == system]
+
+        # For each allocation strategy, plot congestion vs avg traffic per node
+        for strategy in allocation_strategies:
+            strategy_df = system_df[system_df['allocation_strategy'] == strategy]
+
+            # Group by num_nodes to get representative points
+            grouped = strategy_df.groupby('num_nodes').agg({
+                'avg_traffic_per_node_gb': 'mean',
+                'max_link_util': 'mean'
+            }).reset_index()
+
+            # Sort by traffic
+            grouped = grouped.sort_values('avg_traffic_per_node_gb')
+
+            # Plot line with markers
+            marker = 'o' if strategy == 'contiguous' else 's'
+            color = ALLOCATION_COLORS.get(strategy, 'gray')
+            label = strategy.capitalize()
+
+            ax.plot(grouped['avg_traffic_per_node_gb'],
+                   grouped['max_link_util'],
+                   marker=marker, markersize=8, linewidth=2,
+                   label=label, color=color, alpha=0.8)
+
+            # Add node count labels
+            for _, row in grouped.iterrows():
+                ax.annotate(f"{int(row['num_nodes'])}n",
+                          xy=(row['avg_traffic_per_node_gb'], row['max_link_util']),
+                          xytext=(5, 5), textcoords='offset points',
+                          fontsize=7, alpha=0.6)
+
+        ax.set_xlabel('Average Traffic per Node (GB)', fontsize=11)
+        ax.set_ylabel('Network Congestion (Max Link Util)', fontsize=11)
+        ax.set_title(f'{system.capitalize()}: Allocation Policy Impact on Network Congestion',
+                    fontsize=12, fontweight='bold')
+        ax.legend(title='Allocation Policy', fontsize=10)
+        ax.grid(True, alpha=0.3)
+
+        # Set reasonable axis limits
+        ax.set_xlim(left=0)
+        ax.set_ylim(bottom=0)
+
+    plt.suptitle('Network Digital Twin for Policy Decisions: Congestion vs Traffic Intensity\n' +
+                'Comparing Contiguous vs Random Node Allocation Strategies',
+                fontsize=13, fontweight='bold', y=1.02)
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=150, bbox_inches='tight')
+    plt.close()
+    print(f"Saved: {save_path}")
+
+
 # ==========================================
 # Main Entry Point
 # ==========================================
@@ -2186,6 +2259,9 @@ def main():
     # Cross-analysis figures (use case interactions)
     plot_routing_energy_impact(df_routing, df_energy, FIGURES_DIR / "11_routing_energy_impact.png")
     plot_placement_energy_impact(df_placement, df_energy, FIGURES_DIR / "12_placement_energy_impact.png")
+
+    # NEW: Congestion vs message size for allocation policy decisions
+    plot_congestion_vs_message_size(df_placement, FIGURES_DIR / "13_allocation_policy_decision.png")
 
     # Print summary
     print("\n" + "=" * 60)

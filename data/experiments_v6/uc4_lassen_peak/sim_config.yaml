@@ -1,7 +1,0 @@
-weather: false
-time: PT1H
-time_unit: PT1S
-output: "/app/data/experiments_v6/uc4_lassen_peak"
-noui: true
-workload: peak
-system: lassen

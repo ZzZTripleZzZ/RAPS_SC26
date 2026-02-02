@@ -1,0 +1,4 @@
+# 在 src 目录下创建一个 .gitignore
+echo "*.npy" >> .gitignore
+echo "*.bin" >> .gitignore
+echo "raps_output/" >> .gitignore

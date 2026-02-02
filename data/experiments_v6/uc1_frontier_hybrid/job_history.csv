@@ -1,5 +1,0 @@
-id,name,account,num_nodes,scheduled_nodes,run_time,submit_time,start_time,end_time,current_state,avg_cpu_usage,avg_gpu_usage,avg_ntx_usage,avg_nrx_usage,avg_node_power,max_node_power,energy
-38734,User-Test LLM,llmUser,1,[9492],701,0,0,702,JobState.COMPLETED,1,0.8,,,1231.4897959183515,1231.4897959183675,863274.3469387644
-36750,User-Test LLM,llmUser,1,[9495],2207,0,0,2208,JobState.COMPLETED,1,0.8,,,1231.489795918411,1231.4897959183675,2717897.9795919326
-94897,User-Test LLM,llmUser,2,"[9496, 9497]",2293,0,0,2294,JobState.COMPLETED,1,0.8,,,1231.489795918417,1231.4897959183675,5647612.20408186
-93568,User-Test LLM,llmUser,2,"[9490, 9491]",3410,0,0,3411,JobState.COMPLETED,1,0.8,,,1231.489795918469,1231.4897959183675,8398760.40816396

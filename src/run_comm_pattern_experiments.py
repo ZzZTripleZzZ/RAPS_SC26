@@ -12,7 +12,7 @@ Mini-apps:
 """
 
 import sys
-sys.path.insert(0, '/app/extern/raps')
+sys.path.insert(0, '/app')
 
 import subprocess
 import json
@@ -104,7 +104,7 @@ def run_simulation_with_jobs(system_name, jobs, output_dir, allocation='contiguo
     import yaml
 
     # Load system config
-    config_path = Path(f"/app/extern/raps/config/{system_name}.yaml")
+    config_path = Path(f"/app/config/{system_name}.yaml")
     with open(config_path) as f:
         config = yaml.safe_load(f)
 

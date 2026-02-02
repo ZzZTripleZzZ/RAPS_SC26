@@ -1,0 +1,247 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+
+\lstset{
+    language=Python,
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{blue},
+    stringstyle=\color{red},
+    commentstyle=\color{gray},
+    frame=single,
+    breaklines=true,
+    showstringspaces=false
+}
+
+\title{Communication Patterns and Message Size Implementation Report}
+\author{RAPS Network Model}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Overview}
+
+This report documents the implementation of configurable communication patterns and message sizes in the RAPS network model, enabling more realistic simulation of HPC application network behavior.
+
+\section{What Was Implemented}
+
+\subsection{Communication Patterns}
+
+Two communication patterns are now supported:
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}lll@{}}
+\toprule
+Pattern & Description & Traffic Distribution \\
+\midrule
+\texttt{ALL\_TO\_ALL} & Every node sends to every other node & $tx / (N-1)$ per peer \\
+\texttt{STENCIL\_3D} & Each node sends to 6 neighbors ($\pm x, \pm y, \pm z$) & $tx / 6$ per neighbor \\
+\bottomrule
+\end{tabular}
+\caption{Supported communication patterns}
+\end{table}
+
+\textbf{Implementation Details:}
+
+\begin{itemize}
+    \item \textbf{\texttt{CommunicationPattern} enum} (\texttt{raps/job.py}): Defines pattern types
+    \item \textbf{\texttt{factorize\_3d(n)}}: Maps $N$ nodes to a virtual 3D grid (e.g., $8 \rightarrow 2 \times 2 \times 2$, $64 \rightarrow 4 \times 4 \times 4$)
+    \item \textbf{\texttt{get\_stencil\_3d\_neighbors()}}: Computes 6 neighbors with periodic boundary conditions
+    \item \textbf{\texttt{link\_loads\_for\_job\_stencil\_3d()}}: Routes traffic only to stencil neighbors
+    \item \textbf{\texttt{link\_loads\_for\_pattern()}}: Dispatcher that selects the correct routing function
+\end{itemize}
+
+\subsection{Message Size}
+
+Jobs can now specify a message size, which affects network overhead:
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}lll@{}}
+\toprule
+Constant & Value & Use Case \\
+\midrule
+\texttt{MESSAGE\_SIZE\_64K} & 64 KiB & Small messages, higher overhead \\
+\texttt{MESSAGE\_SIZE\_1M} & 1 MiB & Large messages, lower overhead \\
+\texttt{None} & N/A & Raw bandwidth model (no overhead) \\
+\bottomrule
+\end{tabular}
+\caption{Message size constants}
+\end{table}
+
+\textbf{Overhead Model:}
+\begin{align}
+\text{effective\_traffic} &= \text{raw\_traffic} + (\text{num\_messages} \times \text{header\_overhead}) \\
+\text{num\_messages} &= \lceil \text{bytes\_per\_peer} / \text{message\_size} \rceil \times \text{num\_peers} \\
+\text{header\_overhead} &= 64 \text{ bytes per message}
+\end{align}
+
+\subsection{Files Modified}
+
+\begin{itemize}
+    \item \texttt{raps/job.py}: Added \texttt{CommunicationPattern} enum, \texttt{message\_size} and \texttt{comm\_pattern} to Job
+    \item \texttt{raps/network/base.py}: Added pattern routing functions and message overhead calculation
+    \item \texttt{raps/network/\_\_init\_\_.py}: Updated \texttt{NetworkModel.simulate\_network\_utilization()} to use patterns
+\end{itemize}
+
+\section{Why These Choices}
+
+\subsection{Communication Patterns}
+
+\textbf{All-to-all} represents collective operations like \texttt{MPI\_Alltoall}, common in FFT, matrix transpose, and some machine learning workloads. It creates high network load as traffic scales $O(N^2)$.
+
+\textbf{3D Stencil} represents nearest-neighbor communication patterns used in:
+\begin{itemize}
+    \item Computational fluid dynamics (CFD)
+    \item Weather/climate modeling
+    \item Finite difference methods
+    \item Many physics simulations
+\end{itemize}
+
+Stencil patterns are $O(N)$ in traffic and exhibit strong locality, making them ideal for torus topologies.
+
+\subsection{Message Size}
+
+Message size affects real network performance through:
+\begin{enumerate}
+    \item \textbf{Protocol overhead}: Each message incurs fixed header costs
+    \item \textbf{Latency hiding}: Smaller messages have worse bandwidth utilization
+    \item \textbf{Congestion dynamics}: More messages = more contention for resources
+\end{enumerate}
+
+The 64 KiB and 1 MiB sizes represent common HPC message sizes---64K is typical for latency-sensitive applications, while 1M is common for bulk data transfers.
+
+\section{Test Results}
+
+\subsection{Fat-Tree Topology (k=8, 128 nodes)}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}llll@{}}
+\toprule
+Nodes & Pattern & Congestion & Change vs All-to-All \\
+\midrule
+8 & all-to-all & 14.63 & --- \\
+8 & stencil-3d & 17.07 & +17\% (worse) \\
+27 & all-to-all & 43.32 & --- \\
+27 & stencil-3d & 51.20 & +18\% (worse) \\
+64 & all-to-all & 78.02 & --- \\
+64 & stencil-3d & 68.27 & \textbf{-12\% (better)} \\
+\bottomrule
+\end{tabular}
+\caption{Congestion results on fat-tree topology}
+\end{table}
+
+\textbf{Analysis}: On fat-tree, stencil shows \textit{worse} congestion for small jobs because it concentrates traffic on fewer links (creating hotspots). At 64 nodes, stencil becomes beneficial as the traffic spreads more evenly.
+
+\subsection{3D Torus Topology ($4 \times 4 \times 4$)}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}llll@{}}
+\toprule
+Nodes & Pattern & Congestion & Change vs All-to-All \\
+\midrule
+8 & all-to-all & 44.80 & --- \\
+8 & stencil-3d & 12.80 & \textbf{-71\% (better)} \\
+27 & all-to-all & 166.40 & --- \\
+27 & stencil-3d & 26.67 & \textbf{-84\% (better)} \\
+64 & all-to-all & 403.20 & --- \\
+64 & stencil-3d & 12.80 & \textbf{-97\% (better)} \\
+\bottomrule
+\end{tabular}
+\caption{Congestion results on 3D torus topology}
+\end{table}
+
+\textbf{Analysis}: On torus topology, stencil shows \textit{dramatic} congestion reduction because:
+\begin{enumerate}
+    \item Torus is optimized for nearest-neighbor communication
+    \item Stencil traffic stays local (1-hop to neighbors)
+    \item All-to-all must traverse many hops, creating bottlenecks
+\end{enumerate}
+
+\subsection{Message Size Impact}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}ll@{}}
+\toprule
+Message Size & Overhead \\
+\midrule
+None (raw) & 0\% \\
+64 KiB & $\sim$0.1\% \\
+1 MiB & $\sim$0.006\% \\
+\bottomrule
+\end{tabular}
+\caption{Message size overhead impact}
+\end{table}
+
+The current header overhead model (64 bytes/message) produces minimal impact. This is realistic for large transfers but may underestimate overhead for latency-bound small-message workloads.
+
+\section{Usage Example}
+
+\begin{lstlisting}
+from raps.job import (job_dict, CommunicationPattern,
+                      MESSAGE_SIZE_64K, MESSAGE_SIZE_1M)
+
+# CFD simulation with stencil pattern and 1 MiB messages
+cfd_job = job_dict(
+    nodes_required=64,
+    name='cfd_simulation',
+    account='physics',
+    id=1,
+    scheduled_nodes=list(range(64)),
+    cpu_trace=[0.8],
+    gpu_trace=[0.9],
+    ntx_trace=[5e9],  # 5 GB/s per node
+    nrx_trace=[5e9],
+    comm_pattern=CommunicationPattern.STENCIL_3D,
+    message_size=MESSAGE_SIZE_1M,
+)
+
+# ML training with all-to-all pattern and 64 KiB messages
+ml_job = job_dict(
+    nodes_required=32,
+    name='ml_training',
+    account='ai',
+    id=2,
+    scheduled_nodes=list(range(32, 64)),
+    cpu_trace=[0.5],
+    gpu_trace=[0.95],
+    ntx_trace=[10e9],  # 10 GB/s per node
+    nrx_trace=[10e9],
+    comm_pattern=CommunicationPattern.ALL_TO_ALL,
+    message_size=MESSAGE_SIZE_64K,
+)
+\end{lstlisting}
+
+\section{Key Findings}
+
+\begin{enumerate}
+    \item \textbf{Topology-pattern matching matters}: Stencil patterns on torus show 70--97\% congestion reduction vs all-to-all, while fat-tree shows mixed results.
+
+    \item \textbf{Job placement affects pattern efficiency}: Stencil benefits require nodes to be allocated in a way that preserves locality.
+
+    \item \textbf{Message size overhead is minimal} with the current model ($\sim$0.1\% for 64K messages). Consider increasing header overhead or adding latency-based penalties for more impact.
+
+    \item \textbf{Pattern choice significantly affects congestion}: Can be more impactful than message size for determining network performance.
+\end{enumerate}
+
+\section{Future Enhancements}
+
+\begin{enumerate}
+    \item \textbf{Additional patterns}: Ring, tree, butterfly, 2D stencil, custom patterns
+    \item \textbf{Latency modeling}: Small messages should incur latency penalties beyond just overhead
+    \item \textbf{Topology-aware stencil}: Use actual torus coordinates when available instead of virtual grid
+    \item \textbf{Adaptive message sizing}: Allow message size to vary with communication phase
+\end{enumerate}
+
+\end{document}

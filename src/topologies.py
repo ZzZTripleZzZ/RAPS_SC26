@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 # Add RAPS to path
-sys.path.insert(0, str(Path("/app/extern/raps")))
+sys.path.insert(0, str(Path("/app")))
 
 import networkx as nx
 import numpy as np

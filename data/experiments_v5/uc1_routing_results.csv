@@ -1,6 +1,0 @@
-system,topology,strategy,data_type,jobs_completed,throughput,avg_power_mw,total_energy_mwh
-lassen,fat-tree,contiguous,real,29,29.0,2.9957190240320206,2.9957190240320206
-lassen,fat-tree,random,real,29,29.0,2.9957190240320206,2.9957190240320206
-frontier,dragonfly,contiguous,synthetic,0,0.0,0.0,0.0
-frontier,dragonfly,random,synthetic,0,0.0,0.0,0.0
-frontier,dragonfly,hybrid,synthetic,0,0.0,0.0,0.0

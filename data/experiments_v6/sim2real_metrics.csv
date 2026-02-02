@@ -1,7 +1,0 @@
-metric,system,expected,simulated,gap_percent,unit
-idle_power,lassen,3.0,2.7796,7.346666666666672,MW
-peak_power,lassen,9.2,8.8137,4.198913043478245,MW
-node_count,lassen,4626.0,4626.0,0.0,count
-idle_power,frontier,7.0,7.3065,4.3785714285714255,MW
-peak_power,frontier,21.1,28.2279,33.78151658767772,MW
-node_count,frontier,9408.0,9408.0,0.0,count

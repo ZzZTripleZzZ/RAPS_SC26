@@ -1,7 +1,0 @@
-system,topology,strategy,data_type,jobs_completed,avg_power_mw,throughput
-lassen,fat-tree,contiguous,synthetic,0,6.018171706729335,0.0
-frontier,dragonfly,contiguous,synthetic,5,20.469593303896186,5.0
-lassen,fat-tree,random,synthetic,5,5.378832065197795,5.0
-frontier,dragonfly,random,synthetic,5,19.328675582522955,5.0
-lassen,fat-tree,hybrid,synthetic,5,5.482343462635258,5.0
-frontier,dragonfly,hybrid,synthetic,4,20.183693973578304,4.0

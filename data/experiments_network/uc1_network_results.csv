@@ -1,7 +1,0 @@
-system,allocation,topology,workload,jobs_completed,throughput,avg_power_mw
-lassen,contiguous,fat-tree,allocation_test,4,24.0,4.387651506507222
-lassen,random,fat-tree,allocation_test,2,12.0,4.646127252614794
-lassen,hybrid,fat-tree,allocation_test,4,24.0,4.527724656342364
-frontier,contiguous,dragonfly,allocation_test,2,12.0,15.577698527627359
-frontier,random,dragonfly,allocation_test,4,24.0,16.403776428868337
-frontier,hybrid,dragonfly,allocation_test,3,18.0,15.83021376326918

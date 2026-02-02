@@ -1,8 +1,0 @@
-weather: false
-time: PT1H
-time_unit: PT1S
-output: "/app/data/experiments_v6/uc1_lassen_hybrid"
-noui: true
-workload: randomAI
-allocation: hybrid
-system: lassen

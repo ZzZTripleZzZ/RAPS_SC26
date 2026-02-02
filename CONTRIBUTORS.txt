@@ -1,0 +1,15 @@
+Special thanks to all contributors, listed below!
+This also serves as acknowlegement by the individuals listed that their new contributions were made under agreement of both MIT and Apache-2.0 license.
+
+Wesley Brewer (brewerwh@ornl.gov), Oak Ridge National Laboratory
+Rafal Wojda (wojdarp@ornl.gov), Oak Ridge National Laboratory
+Matthias Maiterth (maiterthm@ornl.gov), Oak Ridge National Laboratory
+Sedrick Bouknight (bouknightsl@ornl.gov), Oak Ridge National Laboratory
+Jesse Hines (hinesjr@ornl.gov), Oak Ridge National Laboratory
+Jake Webb (webbtj@ornl.gov), Oak Ridge National Laboratory
+Rashadul Kabir (rashadul.kabir@colostate.edu), Colorado State University
+Bertrand Cirou (cirou@cines.fr), Centre Informatique National de l’Enseignement Supérieur
+Kevin Menear (kmenear@nrel.gov), National Renewable Energy Laboratory
+Tim Dykes (tim.dykes@hpe.com), Hewlett Packard Enterprise
+Srishti Kalepu (skalepu3@gatech.edu), Georgia Institute of Technology
+Damien Fay (damien.fay@hpe.com), Hewlett Packard Enterprise

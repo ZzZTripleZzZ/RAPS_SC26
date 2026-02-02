@@ -21,7 +21,7 @@ network topology and allocation strategies.
 """
 
 import sys
-sys.path.insert(0, '/app/extern/raps')
+sys.path.insert(0, '/app')
 
 from raps.job import Job, job_dict, CommunicationPattern, MESSAGE_SIZE_64K, MESSAGE_SIZE_1M
 

@@ -1,9 +1,0 @@
-system,policy,backfill,data_type,jobs_completed,avg_power_mw,total_energy_mwh,throughput
-lassen,fcfs,none,synthetic,0,5.1258,0.0,0.0
-lassen,sjf,none,synthetic,2,5.5483,0.0,2.0
-lassen,fcfs,easy,synthetic,5,5.657,0.0,5.0
-lassen,fcfs,firstfit,synthetic,4,5.745,0.0,4.0
-frontier,fcfs,none,synthetic,1,18.3407,0.0,1.0
-frontier,sjf,none,synthetic,0,19.453,0.0,0.0
-frontier,fcfs,easy,synthetic,0,20.3906,0.0,0.0
-frontier,fcfs,firstfit,synthetic,7,20.3405,0.0,7.0

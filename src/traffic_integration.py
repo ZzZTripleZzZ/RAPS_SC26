@@ -18,7 +18,7 @@ from typing import Dict, List, Tuple, Optional, Any
 from enum import Enum
 
 # Add RAPS to path
-sys.path.insert(0, str(Path("/app/extern/raps")))
+sys.path.insert(0, str(Path("/app")))
 
 try:
     from raps.job import CommunicationPattern, job_dict, MESSAGE_SIZE_64K

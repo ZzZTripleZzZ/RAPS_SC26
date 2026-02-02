@@ -1,8 +1,0 @@
-weather: false
-time: PT1H
-time_unit: PT1S
-output: "/app/data/experiments_v6/uc3_frontier_fcfs"
-noui: true
-workload: randomAI
-policy: fcfs
-system: frontier

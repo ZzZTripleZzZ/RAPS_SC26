@@ -1,6 +1,7 @@
 # Large data files (>100MB)
 data/matrices/*_dynamic.npy
 data/raw_traces/*/stderr.log
+data/lassen/
 
 # Output directories
 output/
@@ -17,6 +18,24 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+*.whl
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+*.cover
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*.ipynb
 
 # IDE
 .vscode/
@@ -24,11 +43,40 @@ build/
 *.swp
 *.swo
 *~
+*.sublime-project
+*.sublime-workspace
 
 # OS
 .DS_Store
 Thumbs.db
+*.lnk
 
 # Temporary files
 *.tmp
 *.log
+*.bak
+*~
+
+# Claude Code
+.claude/
+
+# Git submodules
+.git/modules/
+
+# Compiled binaries
+bin/
+*.o
+*.out
+*.exe
+
+# Data
+data/raw_traces/
+data/matrices/*.npy
+data/matrices/*.h5
+
+# Models and checkpoints
+*.pth
+*.pt
+*.ckpt
+models/
+checkpoints/

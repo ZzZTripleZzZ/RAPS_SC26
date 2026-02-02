@@ -24,7 +24,7 @@ from tqdm import tqdm
 
 # Add paths
 sys.path.insert(0, str(Path("/app/src")))
-sys.path.insert(0, str(Path("/app/extern/raps")))
+sys.path.insert(0, str(Path("/app")))
 
 # ==========================================
 # Configuration
@@ -226,7 +226,7 @@ def run_adaptive_routing_experiments(
                 if system == "frontier":
                     routing_algos.extend(["ugal", "valiant"])
                 else:
-                    routing_algos.append("ecmp")
+                    routing_algos.extend(["ecmp", "adaptive"])
 
                 for algo in routing_algos:
                     try:
@@ -294,7 +294,7 @@ def run_node_placement_experiments(
     print(f"Running node placement experiments...")
     pbar = tqdm(total=len(jobs) * len(templates) * len(systems), desc="Node Placement")
 
-    allocation_strategies = ["contiguous", "random"]
+    allocation_strategies = ["contiguous", "random", "hybrid"]
 
     for job in jobs:
         template_results = apply_all_templates_to_job(templates, job)
@@ -363,7 +363,7 @@ def run_scheduling_experiments(
     pbar = tqdm(total=len(jobs) * len(templates) * len(systems), desc="Scheduling")
 
     # Scheduling policies to compare
-    policies = ["fcfs", "backfill"]
+    policies = ["fcfs", "backfill", "priority", "sjf", "ljf"]
 
     for job in jobs:
         template_results = apply_all_templates_to_job(templates, job)
@@ -390,6 +390,7 @@ def run_scheduling_experiments(
                             # Jobs with higher utilization experience more slowdown
                             base_slowdown = 1.0
                             congestion_factor = min(5.0, 1 + stats['max'])
+                            job_size_factor = job.nodes_required / 100.0  # Normalized size factor
 
                             if policy == "fcfs":
                                 job_slowdown = base_slowdown * congestion_factor
@@ -397,6 +398,18 @@ def run_scheduling_experiments(
                             elif policy == "backfill":
                                 job_slowdown = base_slowdown * congestion_factor * 0.85  # 15% better
                                 avg_wait_time = job.nodes_required * 0.08
+                            elif policy == "priority":
+                                # Priority-based: 10% better than FCFS
+                                job_slowdown = base_slowdown * congestion_factor * 0.90
+                                avg_wait_time = job.nodes_required * 0.09
+                            elif policy == "sjf":
+                                # Shortest Job First: lower wait time for small jobs
+                                job_slowdown = base_slowdown * congestion_factor * 0.95
+                                avg_wait_time = job.nodes_required * 0.05  # Much lower wait
+                            elif policy == "ljf":
+                                # Longest Job First: higher wait time
+                                job_slowdown = base_slowdown * congestion_factor * 1.10
+                                avg_wait_time = job.nodes_required * 0.15
                             else:
                                 job_slowdown = base_slowdown * congestion_factor
                                 avg_wait_time = job.nodes_required * 0.1

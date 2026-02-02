@@ -1,6 +1,0 @@
-[submodule "extern/raps"]
-	path = extern/raps
-	url = https://github.com/ZzZTripleZzZ/RAPS-NDT
-[submodule "extern/traffic_gen"]
-	path = extern/traffic_gen
-	url = https://github.com/ZzZTripleZzZ/frontier-dumpi

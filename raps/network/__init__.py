@@ -1,7 +1,52 @@
 import os
 import warnings
 
+import networkx as nx
 from raps.job import CommunicationPattern
+
+
+class LazyAPSP:
+    """Lazy all-pairs shortest path cache.
+
+    Computes and caches shortest paths on demand instead of pre-computing
+    all pairs upfront. This avoids the O(V^2) startup cost while still
+    giving O(1) lookups on cache hits.
+    """
+
+    def __init__(self, graph):
+        self._graph = graph
+        self._cache = {}  # {src: {dst: path}}
+
+    def __getitem__(self, src):
+        if src not in self._cache:
+            self._cache[src] = {}
+        return _LazySrcPaths(self._graph, src, self._cache[src])
+
+    def get(self, src, default=None):
+        try:
+            return self[src]
+        except KeyError:
+            return default
+
+
+class _LazySrcPaths:
+    """Lazy per-source path lookup. Computes paths on first access."""
+
+    def __init__(self, graph, src, cache_dict):
+        self._graph = graph
+        self._src = src
+        self._cache = cache_dict
+
+    def __getitem__(self, dst):
+        if dst not in self._cache:
+            self._cache[dst] = nx.shortest_path(self._graph, self._src, dst)
+        return self._cache[dst]
+
+    def get(self, dst, default=None):
+        try:
+            return self[dst]
+        except (KeyError, nx.NetworkXNoPath):
+            return default
 
 from .base import (
     all_to_all_paths,
@@ -147,6 +192,41 @@ class NetworkModel:
         else:
             raise ValueError(f"Unsupported topology: {self.topology}")
 
+        # Lazy shortest-path cache: paths are computed on first access
+        if self.net_graph is not None:
+            self._apsp = LazyAPSP(self.net_graph)
+        else:
+            self._apsp = None
+
+        # Per-job caches: host list mapping and computed paths
+        self._job_host_cache = {}  # frozenset(scheduled_nodes) -> host_list
+
+    def get_job_hosts(self, job):
+        """Get cached host list for a job's scheduled nodes."""
+        key = frozenset(job.scheduled_nodes)
+        if key not in self._job_host_cache:
+            if self.topology == "fat-tree":
+                self._job_host_cache[key] = [node_id_to_host_name(n, self.fattree_k) for n in job.scheduled_nodes]
+            elif self.topology == "dragonfly":
+                self._job_host_cache[key] = [self.real_to_fat_idx[n] for n in job.scheduled_nodes]
+            elif self.topology == "torus3d":
+                X = self.config["TORUS_X"]
+                Y = self.config["TORUS_Y"]
+                Z = self.config["TORUS_Z"]
+                hosts_per_router = self.config["HOSTS_PER_ROUTER"]
+                self._job_host_cache[key] = [
+                    torus_host_from_real_index(n, X, Y, Z, hosts_per_router)
+                    for n in job.scheduled_nodes
+                ]
+            else:
+                self._job_host_cache[key] = list(job.scheduled_nodes)
+        return self._job_host_cache[key]
+
+    def clear_job_cache(self, job):
+        """Remove cached data for a completed job."""
+        key = frozenset(job.scheduled_nodes)
+        self._job_host_cache.pop(key, None)
+
     def simulate_network_utilization(self, *, job, debug=False):
         net_util = net_cong = net_tx = net_rx = 0
         max_throughput = self.max_link_bw * job.trace_quanta
@@ -174,7 +254,7 @@ class NetworkModel:
             print(f"  raw tx/rx: {net_tx}/{net_rx}, effective tx/rx: {effective_tx}/{effective_rx}")
 
         if self.topology == "fat-tree":
-            host_list = [node_id_to_host_name(n, self.fattree_k) for n in job.scheduled_nodes]
+            host_list = self.get_job_hosts(job)
             if debug:
                 print("  fat-tree hosts:", host_list)
                 print(f"  routing: {self.routing_algorithm}")
@@ -186,6 +266,7 @@ class NetworkModel:
                 comm_pattern,
                 routing_algorithm=self.routing_algorithm,
                 link_loads=self.global_link_loads,
+                apsp=self._apsp,
             )
             net_cong = worst_link_util(loads, max_throughput)
 
@@ -200,8 +281,8 @@ class NetworkModel:
             D = self.config["DRAGONFLY_D"]
             A = self.config["DRAGONFLY_A"]
             P = self.config["DRAGONFLY_P"]
-            # Directly use mapped host names
-            host_list = [self.real_to_fat_idx[real_n] for real_n in job.scheduled_nodes]
+            # Directly use mapped host names (cached)
+            host_list = self.get_job_hosts(job)
             if debug:
                 print("  dragonfly hosts:", host_list)
                 print(f"  routing: {self.routing_algorithm}")
@@ -223,6 +304,7 @@ class NetworkModel:
                 routing_algorithm=self.routing_algorithm,
                 dragonfly_params=dragonfly_params,
                 link_loads=self.global_link_loads,
+                apsp=self._apsp,
             )
             net_cong = worst_link_util(loads, max_throughput)
 
@@ -234,14 +316,7 @@ class NetworkModel:
                         self.global_link_loads[edge_key] += load
 
         elif self.topology == "torus3d":
-            X = self.config["TORUS_X"]
-            Y = self.config["TORUS_Y"]
-            Z = self.config["TORUS_Z"]
-            hosts_per_router = self.config["HOSTS_PER_ROUTER"]
-            host_list = [
-                torus_host_from_real_index(n, X, Y, Z, hosts_per_router)
-                for n in job.scheduled_nodes
-            ]
+            host_list = self.get_job_hosts(job)
             loads = link_loads_for_job_torus(
                 self.net_graph,
                 self.meta,

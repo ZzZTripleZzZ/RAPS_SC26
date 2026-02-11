@@ -302,6 +302,8 @@ class Engine:
         self.avg_net_rx = []
         self.net_util_history = []
         self.net_congestion_history = []
+        self._congestion_interval = 10  # compute inter-job congestion every N ticks
+        self._last_congestion = 0.0
         self.avg_slowdown_history = []
         self.max_slowdown_history = []
         self.node_occupancy_history = []
@@ -420,6 +422,9 @@ class Engine:
             self.job_history_dict.append(job_stats.__dict__)
             # Free the nodes via the resource manager.
             self.resource_manager.free_nodes_from_job(job)
+            # Clear network caches for this job
+            if self.network_model:
+                self.network_model.clear_job_cache(job)
 
         if not replay:
             killed_jobs = [job for job in self.running if
@@ -633,14 +638,17 @@ class Engine:
 
         # --- Inter-Job Network Congestion ---
         if self.simulate_network and self.network_model and self.running:
-            congestion_stats = simulate_inter_job_congestion(
-                self.network_model, self.running, self.config, self.debug
-            )
-            if isinstance(congestion_stats, dict):
-                total_congestion = congestion_stats['mean']
-            else:
-                total_congestion = congestion_stats
-            self.net_congestion_history.append((self.current_timestep, total_congestion))
+            tick_num = self.current_timestep - self.timestep_start
+            if tick_num % self._congestion_interval == 0:
+                congestion_stats = simulate_inter_job_congestion(
+                    self.network_model, self.running, self.config, self.debug,
+                    apsp=self.network_model._apsp
+                )
+                if isinstance(congestion_stats, dict):
+                    self._last_congestion = congestion_stats['mean']
+                else:
+                    self._last_congestion = congestion_stats
+            self.net_congestion_history.append((self.current_timestep, self._last_congestion))
         # ---
 
         # System Power

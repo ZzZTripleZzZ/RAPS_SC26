@@ -218,6 +218,7 @@ def fattree_route(
     dst: str,
     algorithm: str = 'minimal',
     link_loads: dict = None,
+    apsp: dict = None,
 ) -> List[str]:
     """Main routing dispatcher for fat-tree topology.
 
@@ -227,6 +228,7 @@ def fattree_route(
         dst: Destination host name
         algorithm: Routing algorithm ('minimal', 'ecmp', or 'adaptive')
         link_loads: Current link loads (required for 'adaptive')
+        apsp: Pre-computed all-pairs shortest path dict (optional)
 
     Returns:
         Selected path as a list of node names
@@ -235,6 +237,11 @@ def fattree_route(
         return [src]
 
     if algorithm == 'minimal':
+        if apsp is not None:
+            try:
+                return apsp[src][dst]
+            except (KeyError, nx.NetworkXNoPath):
+                return []
         try:
             return nx.shortest_path(G, src, dst)
         except nx.NetworkXNoPath:
@@ -258,6 +265,7 @@ def link_loads_for_job_fattree_adaptive(
     tx_volume_bytes: float,
     algorithm: str = 'minimal',
     link_loads: dict = None,
+    apsp: dict = None,
 ) -> dict:
     """Compute link loads for a job using adaptive routing on fat-tree.
 
@@ -267,6 +275,7 @@ def link_loads_for_job_fattree_adaptive(
         tx_volume_bytes: Traffic volume per host pair
         algorithm: Routing algorithm ('minimal', 'ecmp', or 'adaptive')
         link_loads: Current global link loads for adaptive decisions
+        apsp: Pre-computed all-pairs shortest path dict (optional)
 
     Returns:
         Dictionary mapping edge tuples to accumulated load values
@@ -285,7 +294,7 @@ def link_loads_for_job_fattree_adaptive(
             if i == j:
                 continue
 
-            path = fattree_route(G, src, dst, algorithm, link_loads)
+            path = fattree_route(G, src, dst, algorithm, link_loads, apsp=apsp)
 
             # Accumulate loads on path edges
             for k in range(len(path) - 1):

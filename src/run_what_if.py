@@ -171,7 +171,7 @@ def setup_network(system: str, num_nodes: int) -> Dict[str, Any]:
             "max_bw": 12.5e9,  # 100 Gbps
         }
 
-    else:  # frontier - dragonfly
+    elif system == "frontier":  # dragonfly
         d, a, p = 16, 16, 4  # Scaled down from real 48, 48, 4
 
         # Further scale for smaller jobs
@@ -191,6 +191,51 @@ def setup_network(system: str, num_nodes: int) -> Dict[str, Any]:
             "params": {"d": scaled_d, "a": scaled_a, "p": p},
             "max_bw": 25e9,  # 200 Gbps
         }
+
+    elif system == "torus":  # 3D torus
+        # Determine torus dimensions based on num_nodes
+        # Factor into X x Y x Z to be close to cube
+        def factorize_for_torus(n):
+            # Try to make dimensions as balanced as possible
+            z = round(n ** (1/3))
+            while n % z != 0 and z > 1:
+                z -= 1
+            remaining = n // z
+            y = round(remaining ** 0.5)
+            while remaining % y != 0 and y > 1:
+                y -= 1
+            x = remaining // y
+            return x, y, z
+
+        x, y, z = factorize_for_torus(max(8, num_nodes))
+        hosts_per_router = 1
+
+        from raps.network.torus3d import build_torus3d
+        graph, meta = build_torus3d((x, y, z), wrap=True, hosts_per_router=hosts_per_router)
+
+        # Create host mapping
+        host_mapping = {}
+        nid = 0
+        for xi in range(x):
+            for yi in range(y):
+                for zi in range(z):
+                    for i in range(hosts_per_router):
+                        if nid < num_nodes:
+                            host_mapping[nid] = f"h_{xi}_{yi}_{zi}_{i}"
+                            nid += 1
+
+        return {
+            "available": True,
+            "graph": graph,
+            "host_mapping": host_mapping,
+            "topology": "torus3d",
+            "params": {"x": x, "y": y, "z": z, "hosts_per_router": hosts_per_router},
+            "meta": meta,
+            "max_bw": 12.5e9,  # 100 Gbps
+        }
+
+    else:
+        return {"available": False}
 
 
 # ==========================================
@@ -746,6 +791,143 @@ def run_inter_job_interference_experiments(
                     traceback.print_exc()
 
                 pbar.update(1)
+
+    pbar.close()
+    return pd.DataFrame(results)
+
+
+def run_cross_topology_interference_experiments(
+    templates: Dict[str, TrafficMatrixTemplate],
+    systems: List[str] = ["lassen", "frontier", "torus"],
+) -> pd.DataFrame:
+    """
+    Run interference experiments across different topologies to demonstrate
+    that interference exists in all major HPC network topologies and
+    shows the energy consumption impact.
+    """
+    results = []
+
+    # Simplified interference scenario for cross-topology comparison
+    # Use smaller node counts that work across all topologies
+    scenario = {
+        'id': 1,
+        'name': 'cross_topology_test',
+        'jobs': [
+            {'id': 101, 'nodes': list(range(0, 16)), 'duration': 600, 'tx_rate': 3e7, 'template': 'lulesh'},
+            {'id': 102, 'nodes': list(range(12, 28)), 'duration': 600, 'tx_rate': 3e7, 'template': 'hpgmg'},
+        ]
+    }
+
+    scenario_jobs = []
+    for job_spec in scenario['jobs']:
+        job = MockJob(
+            job_id=job_spec['id'],
+            nodes=len(job_spec['nodes']),
+            duration_sec=job_spec['duration'],
+            tx_bytes_per_sec=job_spec['tx_rate']
+        )
+        job.scheduled_nodes = job_spec['nodes']
+        job.template_name = job_spec['template']
+        scenario_jobs.append((job, job_spec))
+
+    print(f"Running cross-topology interference experiments...")
+    pbar = tqdm(total=len(systems), desc="Cross-Topology Interference")
+
+    for system in systems:
+        max_node = max(max(job_spec['nodes']) for _, job_spec in scenario_jobs) + 1
+        network = setup_network(system, max_node)
+
+        if not network.get("available", False):
+            pbar.update(1)
+            continue
+
+        try:
+            # 1. Calculate baseline (individual jobs)
+            baseline_metrics = []
+            for job, job_spec in scenario_jobs:
+                if job_spec['template'] not in templates:
+                    continue
+
+                template = templates[job_spec['template']]
+                tmpl_result = apply_template_to_job(template, job)
+                traffic_matrix = tmpl_result['traffic_matrix']
+
+                link_loads = traffic_matrix_to_link_loads(
+                    traffic_matrix,
+                    network['graph'],
+                    network['host_mapping'],
+                    routing_algorithm="minimal",
+                )
+                stats = get_link_util_stats(link_loads, network['max_bw'])
+                baseline_metrics.append({
+                    'job_id': job.id,
+                    'max_link_util': stats['max'],
+                    'avg_link_util': stats['mean'],
+                })
+
+            avg_baseline_util = np.mean([m['max_link_util'] for m in baseline_metrics])
+
+            # 2. Calculate combined (concurrent jobs)
+            # Initialize combined link loads with zeros for all edges
+            combined_link_loads = {tuple(sorted(edge)): 0.0 for edge in network['graph'].edges()}
+
+            for job, job_spec in scenario_jobs:
+                if job_spec['template'] not in templates:
+                    continue
+
+                template = templates[job_spec['template']]
+                tmpl_result = apply_template_to_job(template, job)
+                traffic_matrix = tmpl_result['traffic_matrix']
+
+                # Pass existing link loads and update with result
+                job_link_loads = traffic_matrix_to_link_loads(
+                    traffic_matrix,
+                    network['graph'],
+                    network['host_mapping'],
+                    routing_algorithm="minimal",
+                    link_loads=combined_link_loads,
+                )
+
+                # Update combined_link_loads with the result
+                combined_link_loads = job_link_loads
+
+            combined_stats = get_link_util_stats(combined_link_loads, network['max_bw'])
+
+            # 3. Calculate slowdown factor
+            # Slowdown is proportional to congestion exceeding capacity
+            congestion_ratio = combined_stats['max']
+            if congestion_ratio > 1.0:
+                slowdown_factor = congestion_ratio
+            else:
+                slowdown_factor = 1.0
+
+            # 4. Calculate congestion increase
+            congestion_increase = (combined_stats['max'] - avg_baseline_util) / max(avg_baseline_util, 0.01)
+
+            # 5. Calculate energy overhead
+            # Energy overhead % = (slowdown_factor - 1) * 100
+            energy_overhead_pct = (slowdown_factor - 1) * 100 if slowdown_factor > 1.0 else 0.0
+
+            # 5. Record results
+            results.append({
+                'system': system,
+                'topology': network['topology'],
+                'num_nodes': max_node,
+                'num_concurrent_jobs': len(scenario_jobs),
+                'baseline_max_util': avg_baseline_util,
+                'interference_max_util': combined_stats['max'],
+                'interference_avg_util': combined_stats['mean'],
+                'congestion_increase': congestion_increase,
+                'slowdown_factor': slowdown_factor,
+                'energy_overhead_pct': energy_overhead_pct,
+            })
+
+        except Exception as e:
+            print(f"Error in cross-topology interference for {system}: {e}")
+            import traceback
+            traceback.print_exc()
+
+        pbar.update(1)
 
     pbar.close()
     return pd.DataFrame(results)
@@ -2155,6 +2337,117 @@ def plot_congestion_vs_message_size(df_placement: pd.DataFrame, save_path: Path)
     print(f"Saved: {save_path}")
 
 
+def plot_cross_topology_interference(df: pd.DataFrame, save_path: Path):
+    """
+    Visualize interference existence across different topologies and
+    demonstrate the energy consumption impact.
+    """
+    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+
+    # (a) Congestion increase by topology
+    ax = axes[0, 0]
+    topologies = df['topology'].unique()
+    colors = {'fat-tree': '#1976D2', 'dragonfly': '#F57C00', 'torus3d': '#388E3C'}
+
+    x = np.arange(len(df))
+    bars = ax.bar(x, df['interference_max_util'], color=[colors.get(t, 'gray') for t in df['topology']],
+                  edgecolor='black', linewidth=1.5, alpha=0.8)
+
+    # Add baseline line
+    for i, row in df.iterrows():
+        ax.plot([i-0.4, i+0.4], [row['baseline_max_util'], row['baseline_max_util']],
+               'r--', linewidth=2, label='Baseline' if i == 0 else '')
+
+    ax.set_xticks(x)
+    ax.set_xticklabels([f"{row['system']}\n({row['topology']})" for _, row in df.iterrows()],
+                      fontsize=10)
+    ax.set_ylabel('Max Link Utilization', fontsize=11)
+    ax.set_title('(a) Network Congestion: Baseline vs Interference', fontsize=12, fontweight='bold')
+    ax.legend()
+    ax.grid(axis='y', alpha=0.3)
+
+    # (b) Slowdown factor by topology
+    ax = axes[0, 1]
+    bars = ax.bar(x, df['slowdown_factor'], color=[colors.get(t, 'gray') for t in df['topology']],
+                  edgecolor='black', linewidth=1.5, alpha=0.8)
+    ax.axhline(y=1.0, color='red', linestyle='--', linewidth=2, label='No Slowdown')
+
+    # Add value labels
+    for i, (idx, row) in enumerate(df.iterrows()):
+        ax.text(i, row['slowdown_factor'] + 0.1, f"{row['slowdown_factor']:.2f}×",
+               ha='center', fontsize=10, fontweight='bold')
+
+    ax.set_xticks(x)
+    ax.set_xticklabels([f"{row['system']}\n({row['topology']})" for _, row in df.iterrows()],
+                      fontsize=10)
+    ax.set_ylabel('Slowdown Factor', fontsize=11)
+    ax.set_title('(b) Performance Degradation Due to Interference', fontsize=12, fontweight='bold')
+    ax.legend()
+    ax.grid(axis='y', alpha=0.3)
+
+    # (c) Energy overhead by topology
+    ax = axes[1, 0]
+    bars = ax.bar(x, df['energy_overhead_pct'], color=[colors.get(t, 'gray') for t in df['topology']],
+                  edgecolor='black', linewidth=1.5, alpha=0.8)
+
+    # Add value labels
+    for i, (idx, row) in enumerate(df.iterrows()):
+        ax.text(i, row['energy_overhead_pct'] + 5, f"{row['energy_overhead_pct']:.1f}%",
+               ha='center', fontsize=10, fontweight='bold')
+
+    ax.set_xticks(x)
+    ax.set_xticklabels([f"{row['system']}\n({row['topology']})" for _, row in df.iterrows()],
+                      fontsize=10)
+    ax.set_ylabel('Energy Overhead (%)', fontsize=11)
+    ax.set_title('(c) Extra Energy Consumption Due to Interference', fontsize=12, fontweight='bold')
+    ax.grid(axis='y', alpha=0.3)
+
+    # (d) Comparison table
+    ax = axes[1, 1]
+    ax.axis('off')
+
+    # Create table data
+    table_data = []
+    table_data.append(['Topology', 'System', 'Baseline', 'Interference', 'Slowdown', 'Energy\nOverhead'])
+    for _, row in df.iterrows():
+        table_data.append([
+            row['topology'],
+            row['system'],
+            f"{row['baseline_max_util']:.2f}",
+            f"{row['interference_max_util']:.2f}",
+            f"{row['slowdown_factor']:.2f}×",
+            f"{row['energy_overhead_pct']:.0f}%"
+        ])
+
+    table = ax.table(cellText=table_data, cellLoc='center', loc='center',
+                    colWidths=[0.15, 0.12, 0.12, 0.15, 0.12, 0.15])
+    table.auto_set_font_size(False)
+    table.set_fontsize(10)
+    table.scale(1, 2)
+
+    # Style header row
+    for i in range(len(table_data[0])):
+        cell = table[(0, i)]
+        cell.set_facecolor('#E3F2FD')
+        cell.set_text_props(weight='bold')
+
+    # Color code topology rows
+    for i, (idx, row) in enumerate(df.iterrows(), start=1):
+        cell = table[(i, 0)]
+        cell.set_facecolor(colors.get(row['topology'], 'white'))
+        cell.set_alpha(0.3)
+
+    ax.set_title('(d) Interference Impact Summary', fontsize=12, fontweight='bold', pad=20)
+
+    plt.suptitle('Inter-Job Interference Exists Across All HPC Network Topologies\n' +
+                'Physical Isolation Does Not Guarantee Performance Isolation',
+                fontsize=14, fontweight='bold', y=0.98)
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    plt.savefig(save_path, dpi=150, bbox_inches='tight')
+    plt.close()
+    print(f"Saved: {save_path}")
+
+
 # ==========================================
 # Main Entry Point
 # ==========================================
@@ -2187,7 +2480,7 @@ def main():
     print(f"  Node sizes: {sorted(set(j.nodes_required for j in jobs))}")
 
     # Run experiments
-    print("\n[3/6] Running basic experiments...")
+    print("\n[3/9] Running basic experiments...")
     df_basic = run_template_experiment(
         jobs=jobs,
         templates=filtered_templates,
@@ -2202,7 +2495,7 @@ def main():
     print(f"\n  Basic results saved to: {csv_path}")
 
     # Run Use Case 1: Adaptive Routing
-    print("\n[4/6] Running Use Case 1: Adaptive Routing...")
+    print("\n[4/9] Running Use Case 1: Adaptive Routing...")
     df_routing = run_adaptive_routing_experiments(
         jobs=jobs,
         templates=filtered_templates,
@@ -2212,7 +2505,7 @@ def main():
     df_routing.to_csv(OUTPUT_DIR / "uc1_adaptive_routing.csv", index=False)
 
     # Run Use Case 2: Node Placement
-    print("\n[5/7] Running Use Case 2: Node Placement...")
+    print("\n[5/9] Running Use Case 2: Node Placement...")
     df_placement = run_node_placement_experiments(
         jobs=jobs,
         templates=filtered_templates,
@@ -2222,7 +2515,7 @@ def main():
     df_placement.to_csv(OUTPUT_DIR / "uc2_node_placement.csv", index=False)
 
     # Run Use Case 3: Scheduling
-    print("\n[6/7] Running Use Case 3: Scheduling...")
+    print("\n[6/9] Running Use Case 3: Scheduling...")
     df_scheduling = run_scheduling_experiments(
         jobs=jobs,
         templates=filtered_templates,
@@ -2232,7 +2525,7 @@ def main():
     df_scheduling.to_csv(OUTPUT_DIR / "uc3_scheduling.csv", index=False)
 
     # Run Use Case 4: Energy Analysis
-    print("\n[7/8] Running Use Case 4: Energy Consumption...")
+    print("\n[7/9] Running Use Case 4: Energy Consumption...")
     df_energy = run_energy_analysis_experiments(
         jobs=jobs,
         templates=filtered_templates,
@@ -2242,13 +2535,21 @@ def main():
     df_energy.to_csv(OUTPUT_DIR / "uc4_energy_consumption.csv", index=False)
 
     # Run Inter-Job Interference Analysis
-    print("\n[8/8] Running Inter-Job Interference Analysis...")
+    print("\n[8/9] Running Inter-Job Interference Analysis...")
     df_interference = run_inter_job_interference_experiments(
         templates=filtered_templates,
         systems=["lassen", "frontier"],
         max_scenarios=4,
     )
     df_interference.to_csv(OUTPUT_DIR / "interference_analysis.csv", index=False)
+
+    # Run Cross-Topology Interference Analysis
+    print("\n[9/9] Running Cross-Topology Interference Analysis...")
+    df_cross_topo = run_cross_topology_interference_experiments(
+        templates=filtered_templates,
+        systems=["lassen", "frontier", "torus"],
+    )
+    df_cross_topo.to_csv(OUTPUT_DIR / "cross_topology_interference.csv", index=False)
 
     # Generate visualizations
     print("\n[Visualization] Generating all figures...")
@@ -2275,6 +2576,9 @@ def main():
 
     # NEW: Congestion vs message size for allocation policy decisions
     plot_congestion_vs_message_size(df_placement, FIGURES_DIR / "13_allocation_policy_decision.png")
+
+    # Cross-topology interference figure
+    plot_cross_topology_interference(df_cross_topo, FIGURES_DIR / "14_cross_topology_interference.png")
 
     # Print summary
     print("\n" + "=" * 60)
@@ -2331,8 +2635,20 @@ def main():
         print("\n  Max Link Utilization with Interference:")
         print(interference_summary['interference_max_util'].round(3))
 
+    # Cross-topology interference summary
+    if not df_cross_topo.empty:
+        cross_topo_summary = df_cross_topo.groupby('topology').agg({
+            'slowdown_factor': 'mean',
+            'energy_overhead_pct': 'mean'
+        })
+        print("\nCross-Topology Interference Analysis:")
+        print("  Slowdown Factor by Topology:")
+        print(cross_topo_summary['slowdown_factor'].round(3))
+        print("\n  Energy Overhead % by Topology:")
+        print(cross_topo_summary['energy_overhead_pct'].round(2))
+
     print(f"\nAll outputs saved to: {OUTPUT_DIR}")
-    print(f"Total figures generated: 12")
+    print(f"Total figures generated: 14")
     print("=" * 60)
 
 

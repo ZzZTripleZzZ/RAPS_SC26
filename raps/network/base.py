@@ -93,26 +93,30 @@ def network_slowdown(current_throughput, max_throughput):
         return current_throughput / max_throughput
 
 
-def all_to_all_paths(G, hosts):
+def all_to_all_paths(G, hosts, apsp=None):
     """
     Given a list of host names, return shortest‐paths for every unordered pair.
+    If apsp (all-pairs shortest path dict) is provided, use it instead of nx.shortest_path.
     """
     paths = []
     for i in range(len(hosts)):
         for j in range(i + 1, len(hosts)):
             src, dst = hosts[i], hosts[j]
-            p = nx.shortest_path(G, src, dst)
+            if apsp is not None:
+                p = apsp[src][dst]
+            else:
+                p = nx.shortest_path(G, src, dst)
             paths.append((src, dst, p))
     return paths
 
 
-def link_loads_for_job(G, job_hosts, tx_volume_bytes):
+def link_loads_for_job(G, job_hosts, tx_volume_bytes, apsp=None):
     """
     Distribute tx_volume_bytes from each host equally to all its peers;
     accumulate per-link loads and return a dict {(u,v):bytes, …}.
     This is the ALL-TO-ALL communication pattern.
     """
-    paths = all_to_all_paths(G, job_hosts)
+    paths = all_to_all_paths(G, job_hosts, apsp=apsp)
     loads = {edge: 0.0 for edge in G.edges()}
     # each host sends tx_volume_bytes to each of the (N-1) peers
     for src in job_hosts:
@@ -231,7 +235,7 @@ def stencil_3d_pairs(job_hosts):
     return pairs
 
 
-def link_loads_for_job_stencil_3d(G, job_hosts, tx_volume_bytes):
+def link_loads_for_job_stencil_3d(G, job_hosts, tx_volume_bytes, apsp=None):
     """
     Distribute tx_volume_bytes using 3D stencil pattern.
     Each host sends to its 6 neighbors (±x, ±y, ±z).
@@ -240,6 +244,7 @@ def link_loads_for_job_stencil_3d(G, job_hosts, tx_volume_bytes):
         G: NetworkX graph
         job_hosts: List of host names
         tx_volume_bytes: Total transmit volume per host
+        apsp: Pre-computed all-pairs shortest path dict (optional)
 
     Returns:
         dict {(u,v): bytes, ...} of link loads
@@ -264,11 +269,14 @@ def link_loads_for_job_stencil_3d(G, job_hosts, tx_volume_bytes):
         per_neighbor = tx_volume_bytes / num_neighbors
 
         try:
-            path = nx.shortest_path(G, src, dst)
+            if apsp is not None:
+                path = apsp[src][dst]
+            else:
+                path = nx.shortest_path(G, src, dst)
             for u, v in zip(path, path[1:]):
                 edge = (u, v) if (u, v) in loads else (v, u)
                 loads[edge] += per_neighbor
-        except nx.NetworkXNoPath:
+        except (nx.NetworkXNoPath, KeyError):
             # No path between hosts (shouldn't happen in connected graph)
             pass
 
@@ -356,6 +364,7 @@ def link_loads_for_pattern(
     dragonfly_params: dict | None = None,
     fattree_params: dict | None = None,
     link_loads: dict | None = None,
+    apsp: dict | None = None,
 ):
     """
     Dispatch to appropriate link load calculation based on communication pattern
@@ -407,10 +416,10 @@ def link_loads_for_pattern(
 
     # Standard routing (shortest path)
     if comm_pattern == CommunicationPattern.STENCIL_3D:
-        return link_loads_for_job_stencil_3d(G, job_hosts, tx_volume_bytes)
+        return link_loads_for_job_stencil_3d(G, job_hosts, tx_volume_bytes, apsp=apsp)
     else:
         # Default to all-to-all
-        return link_loads_for_job(G, job_hosts, tx_volume_bytes)
+        return link_loads_for_job(G, job_hosts, tx_volume_bytes, apsp=apsp)
 
 
 def worst_link_util(loads, throughput):
@@ -460,7 +469,7 @@ def max_throughput_per_tick(legacy_cfg: dict, trace_quanta: int) -> float:
     return float(bw) * trace_quanta
 
 
-def simulate_inter_job_congestion(network_model, jobs, legacy_cfg, debug=False):
+def simulate_inter_job_congestion(network_model, jobs, legacy_cfg, debug=False, apsp=None):
     """
     Simulates network congestion from a list of concurrently running jobs.
     Supports different communication patterns and message sizes per job.
@@ -487,27 +496,15 @@ def simulate_inter_job_congestion(network_model, jobs, legacy_cfg, debug=False):
             print(f"  Job {job.id}: pattern={comm_pattern}, raw_tx={net_tx}, effective_tx={effective_tx}")
 
         job_loads = {}
-        if network_model.topology in ("fat-tree", "dragonfly"):
-            if network_model.topology == "fat-tree":
-                k = int(legacy_cfg.get("FATTREE_K", 32))
-                host_list = [node_id_to_host_name(n, k) for n in job.scheduled_nodes]
-            else:  # dragonfly
-                host_list = [network_model.real_to_fat_idx[real_n] for real_n in job.scheduled_nodes]
+        host_list = network_model.get_job_hosts(job)
 
-            job_loads = link_loads_for_pattern(network_model.net_graph, host_list, effective_tx, comm_pattern)
+        if network_model.topology in ("fat-tree", "dragonfly"):
+            job_loads = link_loads_for_pattern(network_model.net_graph, host_list, effective_tx, comm_pattern, apsp=apsp)
 
         elif network_model.topology == "torus3d":
-            X = int(legacy_cfg.get("TORUS_X", 12))
-            Y = int(legacy_cfg.get("TORUS_Y", 12))
-            Z = int(legacy_cfg.get("TORUS_Z", 12))
-            hosts_per_router = int(legacy_cfg.get("HOSTS_PER_ROUTER", 1))
-            host_list = [
-                torus_host_from_real_index(n, X, Y, Z, hosts_per_router)
-                for n in job.scheduled_nodes
-            ]
             # Use pattern-aware loading for stencil, torus-specific for all-to-all
             if comm_pattern == CommunicationPattern.STENCIL_3D:
-                job_loads = link_loads_for_pattern(network_model.net_graph, host_list, effective_tx, comm_pattern)
+                job_loads = link_loads_for_pattern(network_model.net_graph, host_list, effective_tx, comm_pattern, apsp=apsp)
             else:
                 job_loads = link_loads_for_job_torus(network_model.net_graph, network_model.meta, host_list, effective_tx)
 

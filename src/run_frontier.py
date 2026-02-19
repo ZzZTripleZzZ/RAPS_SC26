@@ -2,22 +2,25 @@
 """
 Frontier Scaling Experiments
 =============================
-Parallel benchmark runner for RAPS network simulation on OLCF Frontier.
+Benchmark runner for RAPS network simulation on OLCF Frontier.
 
 Sweeps over:
   - System traces:   lassen (fat-tree), frontier (dragonfly)
-  - Node counts:     100, 1_000, 10_000, 100_000
+  - Node counts:     100, 1_000, 10_000
   - Time quanta:     0.1s, 1s, 10s, 60s
   - Repeats:         3 (for statistical averaging)
 
-Each combination is an independent subprocess, launched in parallel up to
-a configurable worker limit (default: number of CPUs).
+Features:
+  - Incremental CSV saving: results written after each experiment
+  - Resume support: skips already-completed experiments on restart
+  - Sorted execution: fast experiments first to maximize progress per job
+  - Lassen uses real telemetry data; Frontier uses synthetic workloads
 
 Simulation duration: 12 hours (simulated time).
 
 Output
 ------
-  output/frontier_scaling/results.csv          — combined metrics
+  output/frontier_scaling/results.csv          — combined metrics (incremental)
   output/frontier_scaling/<name>/              — per-experiment RAPS output
 """
 import sys
@@ -25,8 +28,10 @@ import os
 import csv
 import time
 import math
+import signal
 import itertools
 import argparse
+import filelock
 import multiprocessing as mp
 from pathlib import Path
 from datetime import timedelta
@@ -38,7 +43,8 @@ from raps.engine import Engine
 from raps.sim_config import SingleSimConfig
 from raps.system_config import SystemConfig, get_system_config
 from raps.stats import get_engine_stats, get_network_stats
-from raps.job import CommunicationPattern
+from raps.job import CommunicationPattern, Job, job_dict
+from raps.telemetry import Telemetry
 
 
 # ---------------------------------------------------------------------------
@@ -46,7 +52,7 @@ from raps.job import CommunicationPattern
 # ---------------------------------------------------------------------------
 SYSTEMS = ["lassen", "frontier"]
 
-NODE_COUNTS = [100, 1_000, 10_000, 100_000]
+NODE_COUNTS = [100, 1_000, 10_000]
 
 TIME_QUANTA = [0.1, 1, 10, 60]   # seconds (Δt)
 
@@ -54,21 +60,49 @@ SIM_DURATION_HOURS = 12
 
 NUM_REPEATS = 3
 
+# Estimated wall-time per experiment (seconds) for sorting fast-first.
+# Based on observed data from previous runs.
+ESTIMATED_WALL_TIME = {
+    # (system, node_count, delta_t) -> estimated seconds
+    ("frontier", 100, 60): 1,
+    ("frontier", 100, 10): 2,
+    ("frontier", 100, 1): 18,
+    ("frontier", 100, 0.1): 160,
+    ("frontier", 1000, 60): 1500,
+    ("frontier", 1000, 10): 3,
+    ("frontier", 1000, 1): 20,
+    ("frontier", 1000, 0.1): 180,
+    ("frontier", 10000, 60): 3600,
+    ("frontier", 10000, 10): 600,
+    ("frontier", 10000, 1): 1200,
+    ("frontier", 10000, 0.1): 3600,
+    ("lassen", 100, 60): 65,
+    ("lassen", 100, 10): 65,
+    ("lassen", 100, 1): 85,
+    ("lassen", 100, 0.1): 200,
+    ("lassen", 1000, 60): 65,
+    ("lassen", 1000, 10): 70,
+    ("lassen", 1000, 1): 85,
+    ("lassen", 1000, 0.1): 285,
+    ("lassen", 10000, 60): 600,
+    ("lassen", 10000, 10): 600,
+    ("lassen", 10000, 1): 900,
+    ("lassen", 10000, 0.1): 3600,
+}
+
 # Dragonfly params: p (hosts/router) * d (routers/group) * (a+1) (groups) >= nodes
 # We pre-compute sensible (d, a, p) combos per node count.
 DRAGONFLY_PARAMS = {
     100:     {"d": 10,  "a": 10,  "p": 1},   # 10*11*1 = 110 >= 100
     1_000:   {"d": 10,  "a": 10,  "p": 10},  # 10*11*10 = 1100 >= 1000
-    10_000:  {"d": 24,  "a": 24,  "p": 16},  # 24*25*16 = 9600; bump a → 26 => 24*27*16 = 10368
-    100_000: {"d": 48,  "a": 48,  "p": 48},  # 48*49*48 = 112896 >= 100000
+    10_000:  {"d": 24,  "a": 24,  "p": 16},  # 24*25*16 = 9600
 }
 
 # Fat-tree: k^3/4 hosts.  k must be even.
 FATTREE_K = {
     100:     8,      # 128 hosts
-    1_000:   14,     # 686 -> k=14 => 686; k=16 => 1024
-    10_000:  28,     # 5488 -> k=28 => 5488; k=30 => 6750; k=32 => 8192
-    100_000: 74,     # 101306 hosts
+    1_000:   14,     # 686 -> k=16 => 1024
+    10_000:  28,     # 5488 -> k=36 => 11664
 }
 
 
@@ -128,17 +162,147 @@ def inject_network_traces(jobs, trace_quanta=15):
             trace_len = max(1, int(job.expected_run_time / trace_quanta))
             nodes = max(1, job.nodes_required)
 
-            # Alternate patterns based on job id
-            if hash(job.id) % 2 == 0:
-                job.comm_pattern = CommunicationPattern.STENCIL_3D
-                traffic = nodes * 6 * 150.0  # 6 neighbors, ~150 bytes each
-            else:
-                job.comm_pattern = CommunicationPattern.ALL_TO_ALL
-                traffic = nodes * (nodes - 1) * 50.0
+            # Use STENCIL_3D for all synthetic jobs (O(N) vs O(N²) for ALL_TO_ALL)
+            job.comm_pattern = CommunicationPattern.STENCIL_3D
+
+            # Realistic HPC traffic: ~1.25 GB/s per node on 100 Gbps NICs
+            # tx_volume = per-node send volume per trace_quanta; the coefficient
+            # functions already iterate over all N nodes, so do NOT multiply by N.
+            NIC_BW_BYTES_PER_S = 1.25e9  # 10 Gbps effective per node
+            traffic = NIC_BW_BYTES_PER_S * trace_quanta
 
             # Constant traffic with slight random variation
             job.ntx_trace = [traffic * _rng.uniform(0.8, 1.2) for _ in range(trace_len)]
             job.nrx_trace = [traffic * _rng.uniform(0.8, 1.2) for _ in range(trace_len)]
+
+
+def replicate_jobs_for_scale(jobs, target_nodes, sim_duration_sec, seed):
+    """Replicate job list to fill a larger system over simulation time.
+    
+    Args:
+        jobs: Original list of Job objects from telemetry
+        target_nodes: Target number of nodes for the scaled system
+        sim_duration_sec: Simulation duration in seconds (to spread job arrivals)
+        seed: Random seed for deterministic scaling
+    
+    Returns:
+        List of scaled Job objects with adjusted submit times
+    """
+    import random
+    random.seed(seed)
+    
+    if not jobs:
+        return []
+    
+    # Calculate how many times to repeat the job list
+    avg_nodes_per_job = sum(j.nodes_required for j in jobs) / len(jobs)
+    estimated_concurrent = target_nodes / avg_nodes_per_job
+    replication_factor = max(1, int(estimated_concurrent / len(jobs) * 10))
+    
+    scaled_jobs = []
+    job_id_offset = 0
+    
+    for rep in range(replication_factor):
+        for orig_job in jobs:
+            # Deep copy job attributes including trace metadata
+            new_job = Job(job_dict(
+                nodes_required=orig_job.nodes_required,
+                name=orig_job.name,
+                account=orig_job.account,
+                id=job_id_offset + orig_job.id,
+                priority=getattr(orig_job, 'priority', 0),
+                cpu_trace=orig_job.cpu_trace,
+                gpu_trace=orig_job.gpu_trace,
+                ntx_trace=orig_job.ntx_trace,
+                nrx_trace=orig_job.nrx_trace,
+                submit_time=0,  # Will adjust below
+                time_limit=orig_job.time_limit,
+                expected_run_time=orig_job.expected_run_time,
+                trace_quanta=getattr(orig_job, 'trace_quanta', 15),
+                trace_time=getattr(orig_job, 'trace_time', None),
+                trace_start_time=getattr(orig_job, 'trace_start_time', 0),
+                trace_end_time=getattr(orig_job, 'trace_end_time', 0),
+                comm_pattern=getattr(orig_job, 'comm_pattern', CommunicationPattern.ALL_TO_ALL),
+            ))
+            
+            # Spread submit times across simulation duration
+            new_submit = (rep * len(jobs) + len(scaled_jobs)) * (sim_duration_sec / (replication_factor * len(jobs)))
+            new_job.submit_time = int(new_submit + random.uniform(-60, 60))
+            
+            if new_job.submit_time < 0:
+                new_job.submit_time = 0
+            
+            scaled_jobs.append(new_job)
+        
+        job_id_offset += 10000
+    
+    # Trim to simulation duration
+    scaled_jobs = [j for j in scaled_jobs if j.submit_time < sim_duration_sec]
+    
+    return scaled_jobs
+
+
+def load_and_scale_lassen_jobs(node_count, sys_config, sim_hours, repeat_idx):
+    """Load real lassen telemetry and scale to target node count.
+    
+    Args:
+        node_count: Target number of nodes
+        sys_config: SystemConfig object
+        sim_hours: Simulation duration in hours
+        repeat_idx: Repeat index for seeding
+    
+    Returns:
+        List of Job objects (original or scaled)
+    """
+    # Try multiple possible data locations
+    possible_paths = [
+        Path("/opt/data/lassen/Lassen-Supercomputer-Job-Dataset"),
+        Path("/lustre/orion/gen053/scratch/zhangzifan/RAPS_SC26/data/lassen/Lassen-Supercomputer-Job-Dataset"),
+        Path(__file__).parent.parent / "data" / "lassen" / "Lassen-Supercomputer-Job-Dataset",
+    ]
+    
+    lassen_data_path = None
+    for path in possible_paths:
+        if path.exists():
+            lassen_data_path = path
+            break
+    
+    if lassen_data_path is None:
+        raise FileNotFoundError(
+            f"Lassen data not found. Tried:\n" +
+            "\n".join(f"  - {p}" for p in possible_paths) +
+            f"\n\nPlease download data with: bash scripts/download_lassen_data.sh"
+        )
+    
+    telemetry_args = {
+        'system': 'lassen',
+        'config': sys_config.get_legacy(),
+        'time': sim_hours * 3600,
+        'start': None,  # Use dataset start
+        'arrival': 'prescribed',  # Use original submit times
+    }
+    td = Telemetry(**telemetry_args)
+    wd = td.load_from_files([lassen_data_path])
+    original_jobs = wd.jobs
+    
+    print(f"  Loaded {len(original_jobs)} jobs from lassen telemetry ({lassen_data_path})", flush=True)
+    
+    # Scale jobs if needed
+    if node_count > 4626:  # Lassen's actual node count
+        print(f"  Scaling jobs to fill {node_count} nodes...", flush=True)
+        scaled_jobs = replicate_jobs_for_scale(
+            original_jobs, 
+            target_nodes=node_count,
+            sim_duration_sec=sim_hours * 3600,
+            seed=42 + repeat_idx
+        )
+        print(f"  Scaled to {len(scaled_jobs)} jobs", flush=True)
+    else:
+        # Filter to fit in node count
+        scaled_jobs = [j for j in original_jobs if j.nodes_required <= node_count]
+        print(f"  Filtered to {len(scaled_jobs)} jobs (nodes <= {node_count})", flush=True)
+    
+    return scaled_jobs
 
 
 def _override_system_config(system_name: str, node_count: int) -> SystemConfig:
@@ -156,6 +320,13 @@ def _override_system_config(system_name: str, node_count: int) -> SystemConfig:
     data["system"]["missing_racks"] = []   # no missing racks in synthetic run
     data["system"]["down_nodes"] = []
 
+    # Cap max_nodes_per_job to actual node count so synthetic jobs can be scheduled
+    if data.get("scheduler"):
+        data["scheduler"]["max_nodes_per_job"] = min(
+            data["scheduler"].get("max_nodes_per_job", node_count),
+            node_count
+        )
+
     # Override network topology params for the new node count
     if data.get("network"):
         topo = data["network"]["topology"]
@@ -167,6 +338,10 @@ def _override_system_config(system_name: str, node_count: int) -> SystemConfig:
             data["network"]["dragonfly_d"] = params["d"]
             data["network"]["dragonfly_a"] = params["a"]
             data["network"]["dragonfly_p"] = params["p"]
+            # Use minimal routing for scaling benchmarks — UGAL is O(N^2 * groups)
+            # per tick and cannot be cached, making it orders of magnitude slower.
+            # UC1 still evaluates adaptive vs minimal routing separately.
+            data["network"]["routing_algorithm"] = "minimal"
 
     return SystemConfig.model_validate(data)
 
@@ -196,8 +371,8 @@ def run_single_experiment(args_tuple):
     try:
         # Build overridden SystemConfig
         sys_config = _override_system_config(system_name, node_count)
-
-        # Build SimConfig
+        
+        # Common SimConfig fields for both lassen and frontier
         sim_dict = {
             "system": system_name,
             "time": timedelta(hours=sim_hours),
@@ -213,30 +388,96 @@ def run_single_experiment(args_tuple):
             "workload": "synthetic",
             "policy": "fcfs",
             "arrival": "poisson",
-            "numjobs": max(50, node_count // 20),
+            "numjobs": max(200, node_count // 5),
             "seed": 42 + repeat_idx,
-            # Explicit distributions to avoid None errors in workload generator
             "jobsize_distribution": ["uniform"],
             "walltime_distribution": ["uniform"],
         }
-
+        
         sim_config = _SimConfig(**sim_dict)
-        # Inject our overridden SystemConfig
         sim_config._system_configs = [sys_config]
-
-        # --- Run ---
+        
         t_engine_start = time.perf_counter()
         engine = Engine(sim_config)
-
-        # Inject network traces for synthetic jobs
+        
+        # Branch: Lassen overrides synthetic jobs with real telemetry data
+        if system_name == "lassen":
+            jobs = load_and_scale_lassen_jobs(node_count, sys_config, sim_hours, repeat_idx)
+            engine.jobs = jobs
+            engine.total_initial_jobs = len(jobs)
+        
+        # Inject network traces for all jobs
         trace_quanta = sys_config.scheduler.trace_quanta
         inject_network_traces(engine.jobs, trace_quanta=trace_quanta)
 
+        # Reduce congestion computation frequency for large systems
+        if node_count >= 10000:
+            engine._congestion_interval = 100  # every 100 ticks instead of 10
+
+        # --- Checkpoint / Resume ---
+        ckpt_dir = exp_output / "checkpoints"
+        ckpt_dir.mkdir(parents=True, exist_ok=True)
+        ckpt_path = ckpt_dir / "engine.ckpt"
+        resuming = False
+
+        if ckpt_path.exists():
+            try:
+                engine.load_checkpoint(ckpt_path)
+                resuming = True
+                pct = ((engine.current_timestep - engine.timestep_start) /
+                       max(1, engine.timestep_end - engine.timestep_start) * 100)
+                print(f"[RESUME] {label}  from timestep {engine.current_timestep} "
+                      f"({pct:.1f}% done)", flush=True)
+            except Exception as ckpt_err:
+                print(f"[WARN] {label}: checkpoint load failed ({ckpt_err}), "
+                      f"starting fresh", flush=True)
+                resuming = False
+
         t_engine_ready = time.perf_counter()
 
+        # Checkpoint every CKPT_INTERVAL_S seconds of wall time
+        CKPT_INTERVAL_S = 300  # 5 minutes
+        last_ckpt_wall = time.perf_counter()
+
+        # Graceful shutdown flag — set by signal handler
+        _shutdown_requested = False
+        _prev_sigusr1 = signal.getsignal(signal.SIGUSR1)
+        _prev_sigterm = signal.getsignal(signal.SIGTERM)
+
+        def _request_shutdown(signum, frame):
+            nonlocal _shutdown_requested
+            _shutdown_requested = True
+            print(f"\n[SIGNAL] {label}: received signal {signum}, "
+                  f"will checkpoint and exit after current tick", flush=True)
+
+        # Install signal handlers (only in main process, not in pool workers)
+        if mp.current_process().name == 'MainProcess' or os.environ.get('RAPS_SINGLE_WORKER'):
+            signal.signal(signal.SIGUSR1, _request_shutdown)
+            signal.signal(signal.SIGTERM, _request_shutdown)
+
         tick_count = 0
-        for _ in engine.run_simulation():
+        interrupted = False
+        for _ in engine.run_simulation(resume=resuming):
             tick_count += 1
+
+            # Periodic checkpoint
+            now = time.perf_counter()
+            if now - last_ckpt_wall >= CKPT_INTERVAL_S:
+                engine.save_checkpoint(ckpt_path)
+                last_ckpt_wall = now
+
+            # Check for graceful shutdown
+            if _shutdown_requested:
+                print(f"[CKPT] {label}: saving checkpoint at tick {tick_count} "
+                      f"(timestep {engine.current_timestep})...", flush=True)
+                engine.save_checkpoint(ckpt_path)
+                interrupted = True
+                break
+
+        # Restore original signal handlers
+        if mp.current_process().name == 'MainProcess' or os.environ.get('RAPS_SINGLE_WORKER'):
+            signal.signal(signal.SIGUSR1, _prev_sigusr1)
+            signal.signal(signal.SIGTERM, _prev_sigterm)
 
         t_sim_end = time.perf_counter()
 
@@ -250,30 +491,47 @@ def run_single_experiment(args_tuple):
         # Collect stats
         net_stats = get_network_stats(engine)
 
-        result.update({
-            "status": "OK",
-            "ticks": tick_count,
-            "engine_init_s": round(engine_init_time, 3),
-            "sim_wall_s": round(sim_wall_time, 3),
-            "total_wall_s": round(total_wall_time, 3),
-            "per_tick_ms": round(per_tick * 1000, 3),
-            "speedup": round(speedup, 1),
-            "jobs_total": len(engine.jobs),
-            "jobs_completed": engine.jobs_completed,
-            "avg_net_util_pct": round(net_stats.get("avg_network_util", 0), 4),
-            "avg_slowdown": round(net_stats.get("avg_per_job_slowdown", 1.0), 4),
-            "max_slowdown": round(net_stats.get("max_per_job_slowdown", 1.0), 4),
-            "avg_congestion": round(net_stats.get("avg_inter_job_congestion", 0), 6),
-            "max_congestion": round(net_stats.get("max_inter_job_congestion", 0), 6),
-        })
+        if interrupted:
+            pct = ((engine.current_timestep - engine.timestep_start) /
+                   max(1, engine.timestep_end - engine.timestep_start) * 100)
+            result.update({
+                "status": "INTERRUPTED",
+                "error": f"Checkpoint saved at {pct:.1f}% ({tick_count} ticks)",
+            })
+            print(f"[INTERRUPTED] {label}  checkpoint at {pct:.1f}% "
+                  f"({tick_count} ticks, wall={total_wall_time:.1f}s)",
+                  flush=True)
+        else:
+            result.update({
+                "status": "OK",
+                "ticks": tick_count,
+                "engine_init_s": round(engine_init_time, 3),
+                "sim_wall_s": round(sim_wall_time, 3),
+                "total_wall_s": round(total_wall_time, 3),
+                "per_tick_ms": round(per_tick * 1000, 3),
+                "speedup": round(speedup, 1),
+                "jobs_total": len(engine.jobs),
+                "jobs_completed": engine.jobs_completed,
+                "avg_net_util_pct": round(net_stats.get("avg_network_util", 0), 4),
+                "avg_slowdown": round(net_stats.get("avg_per_job_slowdown", 1.0), 4),
+                "max_slowdown": round(net_stats.get("max_per_job_slowdown", 1.0), 4),
+                "avg_congestion": round(net_stats.get("avg_inter_job_congestion", 0), 6),
+                "max_congestion": round(net_stats.get("max_inter_job_congestion", 0), 6),
+            })
 
-        print(f"[DONE] {label}  wall={total_wall_time:.1f}s  "
-              f"speedup={speedup:.0f}x  tick={per_tick*1000:.2f}ms",
-              flush=True)
+            # Clean up checkpoint on success
+            if ckpt_path.exists():
+                ckpt_path.unlink()
+
+            print(f"[DONE] {label}  wall={total_wall_time:.1f}s  "
+                  f"speedup={speedup:.0f}x  tick={per_tick*1000:.2f}ms",
+                  flush=True)
 
     except Exception as e:
-        result["error"] = str(e)
-        print(f"[FAIL] {label}: {e}", file=sys.stderr, flush=True)
+        # Truncate error to avoid CSV corruption from huge tracebacks
+        err_msg = str(e).split('\n')[0][:200]
+        result["error"] = err_msg
+        print(f"[FAIL] {label}: {err_msg}", file=sys.stderr, flush=True)
 
     return result
 
@@ -295,14 +553,83 @@ def build_experiment_grid(systems=None, node_counts=None, time_quanta=None,
     return grid
 
 
+def sort_grid_by_estimated_time(grid):
+    """Sort experiments from fastest to slowest based on estimated wall time."""
+    def est_time(item):
+        sys_name, nc, dt, rep = item
+        return ESTIMATED_WALL_TIME.get((sys_name, nc, dt), 9999)
+    return sorted(grid, key=est_time)
+
+
+# ---------------------------------------------------------------------------
+# Incremental CSV helpers
+# ---------------------------------------------------------------------------
+CSV_FIELDNAMES = [
+    "system", "node_count", "delta_t", "repeat", "label", "status",
+    "ticks", "engine_init_s", "sim_wall_s", "total_wall_s",
+    "per_tick_ms", "speedup", "jobs_total", "jobs_completed",
+    "avg_net_util_pct", "avg_slowdown", "max_slowdown",
+    "avg_congestion", "max_congestion", "error",
+]
+
+
+def load_completed_labels(csv_path: Path) -> set:
+    """Load labels of already-completed experiments from results CSV."""
+    completed = set()
+    if csv_path.exists():
+        try:
+            with open(csv_path, "r") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    if row.get("status") == "OK":
+                        completed.add(row["label"])
+        except Exception:
+            pass  # Corrupted CSV, start fresh
+    return completed
+
+
+def ensure_csv_header(csv_path: Path):
+    """Create CSV with header if it doesn't exist yet."""
+    lock_path = csv_path.with_suffix(".csv.lock")
+    with filelock.FileLock(lock_path, timeout=30):
+        if not csv_path.exists() or csv_path.stat().st_size == 0:
+            with open(csv_path, "w", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=CSV_FIELDNAMES)
+                writer.writeheader()
+
+
+def append_result_to_csv(csv_path: Path, result: dict):
+    """Append a single result row to the CSV file (thread/process safe)."""
+    lock_path = csv_path.with_suffix(".csv.lock")
+    with filelock.FileLock(lock_path, timeout=30):
+        with open(csv_path, "a", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=CSV_FIELDNAMES,
+                                    extrasaction="ignore")
+            writer.writerow(result)
+
+
+def run_and_save(args_tuple_with_csv):
+    """Run a single experiment and immediately save the result to CSV.
+
+    INTERRUPTED results are NOT written to CSV so they will be retried
+    on the next SLURM job (checkpoint is preserved on disk).
+    """
+    *task_args, csv_path_str = args_tuple_with_csv
+    csv_path = Path(csv_path_str)
+    result = run_single_experiment(tuple(task_args))
+    if result["status"] != "INTERRUPTED":
+        append_result_to_csv(csv_path, result)
+    return result
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="RAPS Frontier Scaling Experiments",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
-    parser.add_argument("--workers", "-j", type=int, default=None,
-                        help="Max parallel workers (default: CPU count)")
+    parser.add_argument("--workers", "-j", type=int, default=1,
+                        help="Max parallel workers (default: 1 for sequential)")
     parser.add_argument("--output", "-o", type=str,
                         default="output/frontier_scaling",
                         help="Output directory (default: output/frontier_scaling)")
@@ -310,7 +637,7 @@ def main():
                         choices=SYSTEMS,
                         help="Systems to benchmark (default: all)")
     parser.add_argument("--nodes", nargs="+", type=int, default=None,
-                        help="Node counts to sweep (default: 100 1000 10000 100000)")
+                        help="Node counts to sweep (default: 100 1000 10000)")
     parser.add_argument("--dt", nargs="+", type=float, default=None,
                         help="Time quanta to sweep in seconds (default: 0.1 1 10 60)")
     parser.add_argument("--repeats", type=int, default=NUM_REPEATS,
@@ -319,11 +646,14 @@ def main():
                         help=f"Simulated hours per experiment (default: {SIM_DURATION_HOURS})")
     parser.add_argument("--dry-run", action="store_true",
                         help="Print experiment grid without running")
+    parser.add_argument("--no-resume", action="store_true",
+                        help="Don't skip already-completed experiments")
 
     args = parser.parse_args()
 
     output_root = Path(args.output).resolve()
     output_root.mkdir(parents=True, exist_ok=True)
+    csv_path = output_root / "results.csv"
 
     grid = build_experiment_grid(
         systems=args.systems,
@@ -331,6 +661,9 @@ def main():
         time_quanta=args.dt,
         num_repeats=args.repeats,
     )
+
+    # Sort by estimated speed (fast first)
+    grid = sort_grid_by_estimated_time(grid)
 
     print("=" * 70)
     print("RAPS Frontier Scaling Experiments")
@@ -342,67 +675,111 @@ def main():
     print(f"  Total configs: {len(grid)}")
     print(f"  Sim duration:  {args.duration}h each")
     print(f"  Output:        {output_root}")
+    print(f"  Results CSV:   {csv_path}")
     print()
 
     # Print topology mapping
-    print("  Fat-tree k values:    ", {n: FATTREE_K[n] for n in (args.nodes or NODE_COUNTS)})
-    print("  Dragonfly (d,a,p):    ", {n: DRAGONFLY_PARAMS[n] for n in (args.nodes or NODE_COUNTS)})
+    nc_list = args.nodes or NODE_COUNTS
+    print("  Fat-tree k values:    ", {n: FATTREE_K[n] for n in nc_list if n in FATTREE_K})
+    print("  Dragonfly (d,a,p):    ", {n: DRAGONFLY_PARAMS[n] for n in nc_list if n in DRAGONFLY_PARAMS})
     print()
 
-    if args.dry_run:
-        print("Experiments (dry run):")
-        for i, (sys, nc, dt, rep) in enumerate(grid):
-            print(f"  [{i+1:3d}] {sys:>10s}  nodes={nc:>7d}  dt={dt:>5.1f}s  repeat={rep}")
-        print(f"\nTotal: {len(grid)} experiments")
+    # Check for already-completed experiments (resume support)
+    if not args.no_resume:
+        completed = load_completed_labels(csv_path)
+        if completed:
+            print(f"  Resume mode: {len(completed)} experiments already completed, skipping them.")
+            print()
+    else:
+        completed = set()
+
+    # Filter out completed experiments
+    pending_grid = []
+    for sys_name, nc, dt, rep in grid:
+        dt_str = f"{dt:g}"
+        label = f"{sys_name}_n{nc}_dt{dt_str}_r{rep}"
+        if label not in completed:
+            pending_grid.append((sys_name, nc, dt, rep))
+
+    if not pending_grid:
+        print("All experiments already completed! Nothing to do.")
+        print(f"Results: {csv_path}")
         return
 
-    workers = args.workers or mp.cpu_count()
-    print(f"Launching {len(grid)} experiments with {workers} parallel workers...\n")
+    if args.dry_run:
+        print(f"Experiments to run ({len(pending_grid)} pending, {len(completed)} completed):")
+        for i, (sys, nc, dt, rep) in enumerate(pending_grid):
+            est = ESTIMATED_WALL_TIME.get((sys, nc, dt), "?")
+            print(f"  [{i+1:3d}] {sys:>10s}  nodes={nc:>7d}  dt={dt:>5.1f}s  repeat={rep}  (~{est}s)")
+        total_est = sum(ESTIMATED_WALL_TIME.get((s, n, d), 600) for s, n, d, _ in pending_grid)
+        print(f"\nTotal: {len(pending_grid)} experiments, estimated {total_est/3600:.1f}h sequential")
+        return
 
+    workers = args.workers
     sim_hours = args.duration
+
+    # Ensure CSV header exists before workers start writing
+    ensure_csv_header(csv_path)
+
+    print(f"Running {len(pending_grid)} experiments ({len(completed)} already done) "
+          f"with {workers} worker(s)...\n")
 
     # Build argument tuples
     tasks = [
-        (sys_name, nc, dt, rep, str(output_root), sim_hours)
-        for sys_name, nc, dt, rep in grid
+        (sys_name, nc, dt, rep, str(output_root), sim_hours, str(csv_path))
+        for sys_name, nc, dt, rep in pending_grid
     ]
 
     t_start = time.perf_counter()
+    ok_count = 0
+    fail_count = 0
 
-    # Run experiments
     if workers == 1:
-        # Sequential mode — avoids multiprocessing overhead
-        results = [run_single_experiment(t) for t in tasks]
+        # Sequential mode — simple, no multiprocessing overhead
+        for i, task in enumerate(tasks):
+            sys_name, nc, dt, rep = task[0], task[1], task[2], task[3]
+            dt_str = f"{dt:g}"
+            label = f"{sys_name}_n{nc}_dt{dt_str}_r{rep}"
+            print(f"[{i+1}/{len(tasks)}] Starting {label}...", flush=True)
+            result = run_and_save(task)
+            if result["status"] == "OK":
+                ok_count += 1
+            else:
+                fail_count += 1
+            elapsed = time.perf_counter() - t_start
+            print(f"  Progress: {ok_count+fail_count}/{len(tasks)} done, "
+                  f"{ok_count} OK, {fail_count} failed, "
+                  f"elapsed {elapsed/60:.1f}min\n", flush=True)
     else:
         ctx = mp.get_context("spawn")
         with ctx.Pool(processes=workers) as pool:
-            results = pool.map(run_single_experiment, tasks)
+            for result in pool.imap_unordered(run_and_save, tasks):
+                if result["status"] == "OK":
+                    ok_count += 1
+                else:
+                    fail_count += 1
+                elapsed = time.perf_counter() - t_start
+                print(f"  Progress: {ok_count+fail_count}/{len(tasks)} done, "
+                      f"{ok_count} OK, {fail_count} failed, "
+                      f"elapsed {elapsed/60:.1f}min", flush=True)
 
     t_total = time.perf_counter() - t_start
 
-    # Write CSV
-    csv_path = output_root / "results.csv"
-    if results:
-        fieldnames = list(results[0].keys())
-        with open(csv_path, "w", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-            writer.writeheader()
-            writer.writerows(results)
-
     # Summary
-    ok = sum(1 for r in results if r["status"] == "OK")
-    fail = len(results) - ok
+    total_completed = len(completed) + ok_count
+    total_target = len(grid)
 
     print()
     print("=" * 70)
-    print(f"All done in {t_total:.1f}s")
-    print(f"  Succeeded: {ok}/{len(results)}")
-    if fail:
-        print(f"  Failed:    {fail}")
-        for r in results:
-            if r["status"] != "OK":
-                print(f"    - {r['label']}: {r.get('error', 'unknown')}")
-    print(f"  Results:   {csv_path}")
+    print(f"Session done in {t_total:.1f}s ({t_total/60:.1f}min)")
+    print(f"  This session:  {ok_count} succeeded, {fail_count} failed")
+    print(f"  Overall:       {total_completed}/{total_target} experiments completed")
+    if total_completed < total_target:
+        remaining = total_target - total_completed
+        print(f"  Remaining:     {remaining} experiments — resubmit to continue")
+    else:
+        print(f"  ALL DONE!")
+    print(f"  Results:       {csv_path}")
     print("=" * 70)
 
 

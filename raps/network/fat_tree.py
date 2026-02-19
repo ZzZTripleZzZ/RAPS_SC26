@@ -113,7 +113,12 @@ def get_host_edge_switch(host: str) -> str:
     return f"e_{pod}_{edge}"
 
 
-def fattree_all_shortest_paths(G: nx.Graph, src: str, dst: str) -> List[List[str]]:
+def fattree_all_shortest_paths(
+    G: nx.Graph,
+    src: str,
+    dst: str,
+    paths_cache: dict = None,
+) -> List[List[str]]:
     """Find all shortest paths between source and destination in a fat-tree.
 
     In a fat-tree, there can be multiple equal-cost paths between hosts,
@@ -124,6 +129,8 @@ def fattree_all_shortest_paths(G: nx.Graph, src: str, dst: str) -> List[List[str
         G: Fat-tree graph
         src: Source host name
         dst: Destination host name
+        paths_cache: Optional dict to cache results keyed by (src, dst).
+            Pass the same dict across calls to avoid recomputing paths.
 
     Returns:
         List of all shortest paths, each path is a list of node names
@@ -131,13 +138,27 @@ def fattree_all_shortest_paths(G: nx.Graph, src: str, dst: str) -> List[List[str
     if src == dst:
         return [[src]]
 
+    if paths_cache is not None:
+        key = (src, dst)
+        if key not in paths_cache:
+            try:
+                paths_cache[key] = list(nx.all_shortest_paths(G, src, dst))
+            except nx.NetworkXNoPath:
+                paths_cache[key] = []
+        return paths_cache[key]
+
     try:
         return list(nx.all_shortest_paths(G, src, dst))
     except nx.NetworkXNoPath:
         return []
 
 
-def fattree_ecmp_select_path(G: nx.Graph, src: str, dst: str) -> List[str]:
+def fattree_ecmp_select_path(
+    G: nx.Graph,
+    src: str,
+    dst: str,
+    paths_cache: dict = None,
+) -> List[str]:
     """Select a path using ECMP (Equal-Cost Multi-Path) routing.
 
     Randomly selects one of the shortest paths between source and destination.
@@ -146,11 +167,12 @@ def fattree_ecmp_select_path(G: nx.Graph, src: str, dst: str) -> List[str]:
         G: Fat-tree graph
         src: Source host name
         dst: Destination host name
+        paths_cache: Optional dict to cache all-shortest-paths results.
 
     Returns:
         Selected path as a list of node names
     """
-    paths = fattree_all_shortest_paths(G, src, dst)
+    paths = fattree_all_shortest_paths(G, src, dst, paths_cache=paths_cache)
     if not paths:
         return []
     return random.choice(paths)
@@ -178,6 +200,7 @@ def fattree_adaptive_select_path(
     src: str,
     dst: str,
     link_loads: dict,
+    paths_cache: dict = None,
 ) -> List[str]:
     """Select the least congested path using Adaptive ECMP routing.
 
@@ -189,11 +212,12 @@ def fattree_adaptive_select_path(
         src: Source host name
         dst: Destination host name
         link_loads: Dictionary mapping edge tuples to current load values
+        paths_cache: Optional dict to cache all-shortest-paths results.
 
     Returns:
         Selected path as a list of node names (least congested)
     """
-    paths = fattree_all_shortest_paths(G, src, dst)
+    paths = fattree_all_shortest_paths(G, src, dst, paths_cache=paths_cache)
     if not paths:
         return []
     if len(paths) == 1:
@@ -219,6 +243,7 @@ def fattree_route(
     algorithm: str = 'minimal',
     link_loads: dict = None,
     apsp: dict = None,
+    paths_cache: dict = None,
 ) -> List[str]:
     """Main routing dispatcher for fat-tree topology.
 
@@ -229,6 +254,7 @@ def fattree_route(
         algorithm: Routing algorithm ('minimal', 'ecmp', or 'adaptive')
         link_loads: Current link loads (required for 'adaptive')
         apsp: Pre-computed all-pairs shortest path dict (optional)
+        paths_cache: Optional dict to cache all-shortest-paths results.
 
     Returns:
         Selected path as a list of node names
@@ -248,12 +274,12 @@ def fattree_route(
             return []
 
     elif algorithm == 'ecmp':
-        return fattree_ecmp_select_path(G, src, dst)
+        return fattree_ecmp_select_path(G, src, dst, paths_cache=paths_cache)
 
     elif algorithm == 'adaptive':
         if link_loads is None:
             link_loads = {}
-        return fattree_adaptive_select_path(G, src, dst, link_loads)
+        return fattree_adaptive_select_path(G, src, dst, link_loads, paths_cache=paths_cache)
 
     else:
         raise ValueError(f"Unknown fat-tree routing algorithm: {algorithm}")
@@ -266,6 +292,7 @@ def link_loads_for_job_fattree_adaptive(
     algorithm: str = 'minimal',
     link_loads: dict = None,
     apsp: dict = None,
+    paths_cache: dict = None,
 ) -> dict:
     """Compute link loads for a job using adaptive routing on fat-tree.
 
@@ -276,6 +303,9 @@ def link_loads_for_job_fattree_adaptive(
         algorithm: Routing algorithm ('minimal', 'ecmp', or 'adaptive')
         link_loads: Current global link loads for adaptive decisions
         apsp: Pre-computed all-pairs shortest path dict (optional)
+        paths_cache: Optional dict to cache all-shortest-paths results.
+            Reusing the same dict across calls avoids redundant nx.all_shortest_paths
+            calls (which are expensive for fat-tree cross-pod pairs).
 
     Returns:
         Dictionary mapping edge tuples to accumulated load values
@@ -294,7 +324,9 @@ def link_loads_for_job_fattree_adaptive(
             if i == j:
                 continue
 
-            path = fattree_route(G, src, dst, algorithm, link_loads, apsp=apsp)
+            path = fattree_route(
+                G, src, dst, algorithm, link_loads, apsp=apsp, paths_cache=paths_cache
+            )
 
             # Accumulate loads on path edges
             for k in range(len(path) - 1):

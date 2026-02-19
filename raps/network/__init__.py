@@ -4,6 +4,12 @@ import warnings
 import networkx as nx
 from raps.job import CommunicationPattern
 
+# Module-level cache: maps (fattree_k, total_nodes) -> {(src, dst): [paths]}
+# Shared across all NetworkModel instances in the same process so that
+# sequential UC simulations (different policies/allocations but same topology)
+# do not re-compute nx.all_shortest_paths from scratch each time.
+_FATTREE_TOPOLOGY_CACHES: dict = {}
+
 
 class LazyAPSP:
     """Lazy all-pairs shortest path cache.
@@ -51,6 +57,8 @@ class _LazySrcPaths:
 from .base import (
     all_to_all_paths,
     apply_job_slowdown,
+    compute_all_to_all_coefficients,
+    compute_stencil_3d_coefficients,
     compute_system_network_stats,
     link_loads_for_job,
     link_loads_for_job_stencil_3d,
@@ -126,6 +134,13 @@ class NetworkModel:
             # Initialize global link loads for adaptive routing
             self.global_link_loads = {tuple(sorted(edge)): 0.0 for edge in self.net_graph.edges()}
 
+            # Cache for nx.all_shortest_paths results (keyed by (src, dst)).
+            # Use the module-level topology cache so that multiple sequential
+            # simulations with the same fat-tree (same k, same node count) share
+            # already-computed paths and skip expensive re-warmup.
+            cache_key = (self.fattree_k, total_nodes)
+            self._fattree_paths_cache = _FATTREE_TOPOLOGY_CACHES.setdefault(cache_key, {})
+
             routing_info = f"routing={self.routing_algorithm}"
             print(f"[DEBUG] Fat-tree k={self.fattree_k}: {total_nodes} nodes, {routing_info}")
 
@@ -164,14 +179,18 @@ class NetworkModel:
             self.dragonfly_a = A
             self.dragonfly_p = P
 
-            # total nodes seen by scheduler or job trace
-            total_real_nodes = getattr(self, "available_nodes", None)
+            # Use TOTAL_NODES (full node ID range) so all schedulable node IDs
+            # are covered. available_nodes has gaps from missing racks / down_nodes
+            # (e.g. Frontier: 9472 available out of IDs 0..9599), so using
+            # len(available_nodes) would miss high-ID nodes and cause KeyError.
+            total_real_nodes = config.get('TOTAL_NODES')
             if total_real_nodes is None:
-                total_real_nodes = 4626  # fallback for Lassen
-
-            # if available_nodes is a list, take its length
-            if not isinstance(total_real_nodes, int):
-                total_real_nodes = len(total_real_nodes)
+                if available_nodes is None:
+                    total_real_nodes = 4626  # fallback
+                elif isinstance(available_nodes, int):
+                    total_real_nodes = available_nodes
+                else:
+                    total_real_nodes = len(available_nodes)
 
             self.real_to_fat_idx = build_dragonfly_idx_map(D, A, P, total_real_nodes)
 
@@ -200,6 +219,8 @@ class NetworkModel:
 
         # Per-job caches: host list mapping and computed paths
         self._job_host_cache = {}  # frozenset(scheduled_nodes) -> host_list
+        # Cached normalized link-load coefficients per job (for deterministic routing)
+        self._job_load_coeffs = {}  # job.id -> {edge: coefficient}
 
     def get_job_hosts(self, job):
         """Get cached host list for a job's scheduled nodes."""
@@ -226,6 +247,35 @@ class NetworkModel:
         """Remove cached data for a completed job."""
         key = frozenset(job.scheduled_nodes)
         self._job_host_cache.pop(key, None)
+        self._job_load_coeffs.pop(job.id, None)
+
+    def _uses_adaptive_routing(self):
+        """Check whether current routing algorithm requires per-tick path recomputation."""
+        if self.topology == "fat-tree":
+            return self.routing_algorithm in ('ecmp', 'adaptive')
+        elif self.topology == "dragonfly":
+            return self.routing_algorithm in ('ugal', 'valiant')
+        return False
+
+    def _compute_and_cache_coefficients(self, job, host_list, comm_pattern):
+        """Compute link-load coefficients for a job and cache them.
+
+        For deterministic routing (minimal, shortest-path), paths are fixed
+        for a given set of scheduled_nodes, so coefficients only need to be
+        computed once per job lifetime.
+        """
+        from raps.job import normalize_comm_pattern
+        comm = normalize_comm_pattern(comm_pattern)
+
+        if comm == CommunicationPattern.STENCIL_3D:
+            coeffs = compute_stencil_3d_coefficients(
+                self.net_graph, host_list, apsp=self._apsp)
+        else:
+            coeffs = compute_all_to_all_coefficients(
+                self.net_graph, host_list, apsp=self._apsp)
+
+        self._job_load_coeffs[job.id] = coeffs
+        return coeffs
 
     def simulate_network_utilization(self, *, job, debug=False):
         net_util = net_cong = net_tx = net_rx = 0
@@ -253,6 +303,43 @@ class NetworkModel:
             print(f"  comm_pattern: {comm_pattern}, message_size: {message_size}")
             print(f"  raw tx/rx: {net_tx}/{net_rx}, effective tx/rx: {effective_tx}/{effective_rx}")
 
+        # -----------------------------------------------------------
+        # Fast path: use cached coefficients for deterministic routing
+        # -----------------------------------------------------------
+        can_cache = (
+            self.net_graph is not None
+            and self.topology in ("fat-tree", "dragonfly")
+            and not self._uses_adaptive_routing()
+        )
+
+        if can_cache:
+            coeffs = self._job_load_coeffs.get(job.id)
+            if coeffs is None:
+                host_list = self.get_job_hosts(job)
+                coeffs = self._compute_and_cache_coefficients(
+                    job, host_list, comm_pattern)
+
+            # Scale cached coefficients by current traffic volume
+            if coeffs:
+                max_load = 0.0
+                for coeff in coeffs.values():
+                    load = coeff * effective_tx
+                    byte_util = (load * 8) / max_throughput
+                    if byte_util > max_load:
+                        max_load = byte_util
+                net_cong = max_load
+
+                # Update global link loads (for inter-job congestion)
+                for edge, coeff in coeffs.items():
+                    edge_key = tuple(sorted(edge))
+                    if edge_key in self.global_link_loads:
+                        self.global_link_loads[edge_key] += coeff * effective_tx
+
+            return net_util, net_cong, net_tx, net_rx, max_throughput
+
+        # -----------------------------------------------------------
+        # Slow path: adaptive routing or unsupported topology
+        # -----------------------------------------------------------
         if self.topology == "fat-tree":
             host_list = self.get_job_hosts(job)
             if debug:
@@ -267,6 +354,7 @@ class NetworkModel:
                 routing_algorithm=self.routing_algorithm,
                 link_loads=self.global_link_loads,
                 apsp=self._apsp,
+                fattree_params={'paths_cache': getattr(self, '_fattree_paths_cache', None)},
             )
             net_cong = worst_link_util(loads, max_throughput)
 

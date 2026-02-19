@@ -23,16 +23,17 @@ from typing import Dict, List, Any, Optional
 from tqdm import tqdm
 
 # Add paths
-sys.path.insert(0, str(Path("/app/src")))
-sys.path.insert(0, str(Path("/app")))
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT / "src"))
+sys.path.insert(0, str(PROJECT_ROOT))
 
 # ==========================================
 # Configuration
 # ==========================================
-MATRIX_DIR = Path("/app/data/matrices")
-OUTPUT_DIR = Path("/app/output/template_experiments")
+MATRIX_DIR = PROJECT_ROOT / "data" / "matrices"
+OUTPUT_DIR = PROJECT_ROOT / "output" / "template_experiments"
 FIGURES_DIR = OUTPUT_DIR / "figures"
-LASSEN_DATA_DIR = Path("/app/data/lassen")
+LASSEN_DATA_DIR = PROJECT_ROOT / "data" / "lassen"
 
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 FIGURES_DIR.mkdir(parents=True, exist_ok=True)

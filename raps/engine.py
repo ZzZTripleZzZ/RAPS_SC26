@@ -553,6 +553,11 @@ class Engine:
         is simulated.
         """
 
+        # Reset link loads at start of each tick so adaptive routing
+        # sees only this tick's traffic, not accumulated historical loads.
+        if self.simulate_network and self.running:
+            self.network_model.reset_link_loads()
+
         scheduled_nodes = []
         cpu_utils = []
         gpu_utils = []
@@ -574,13 +579,13 @@ class Engine:
                 )
             else:  # if job.state == JobState.RUNNING:
                 # Error checks
-                if not replay and job.current_run_time > job.time_limit and job.end_time is not None:
+                if not replay and job.current_run_time > job.time_limit + time_delta and job.end_time is not None:
                     raise Exception(f"Job exceded time limit! "
                                     f"{job.current_run_time} > {job.time_limit}"
                                     f"\n{job}"
                                     f"\nCurrent timestep:{self.current_timestep - self.timestep_start} (rel)"
                                     )
-                if job.current_run_time > job.expected_run_time:
+                if job.current_run_time > job.expected_run_time + time_delta:
                     raise Exception(f"Job should have ended in replay! "
                                     f" {job.current_run_time} > {job.expected_run_time}"
                                     f"\n{job}"
@@ -640,12 +645,34 @@ class Engine:
         if self.simulate_network and self.network_model and self.running:
             tick_num = self.current_timestep - self.timestep_start
             if tick_num % self._congestion_interval == 0:
+                nm = self.network_model
+                # Build topology-specific routing params for adaptive routing
+                _dragonfly_params = None
+                _fattree_params = None
+                if nm.topology == 'dragonfly':
+                    _dragonfly_params = {
+                        'd': getattr(nm, 'dragonfly_d', 0),
+                        'a': getattr(nm, 'dragonfly_a', 0),
+                        'ugal_threshold': getattr(nm, 'ugal_threshold', 2.0),
+                        'valiant_bias': getattr(nm, 'valiant_bias', 0.0),
+                    }
+                elif nm.topology == 'fat-tree':
+                    _fattree_params = {
+                        'paths_cache': getattr(nm, '_fattree_paths_cache', None),
+                    }
                 congestion_stats = simulate_inter_job_congestion(
-                    self.network_model, self.running, self.config, self.debug,
-                    apsp=self.network_model._apsp
+                    nm, self.running, self.config, self.debug,
+                    apsp=nm._apsp,
+                    job_coeffs_cache=nm._job_load_coeffs,
+                    routing_algorithm=nm.routing_algorithm,
+                    dragonfly_params=_dragonfly_params,
+                    fattree_params=_fattree_params,
                 )
                 if isinstance(congestion_stats, dict):
-                    self._last_congestion = congestion_stats['mean']
+                    # Use max link utilization (not mean) so routing algorithms
+                    # that distribute load evenly show lower congestion than
+                    # minimal routing that concentrates traffic on global links.
+                    self._last_congestion = congestion_stats.get('max', 0)
                 else:
                     self._last_congestion = congestion_stats
             self.net_congestion_history.append((self.current_timestep, self._last_congestion))
@@ -756,8 +783,165 @@ class Engine:
         self.scheduler.policy = target_policy
         self.scheduler.bfpolicy = target_bfpolicy
 
-    def run_simulation(self, autoshutdown=False):
-        """Generator that yields after each simulation tick."""
+    # ------------------------------------------------------------------
+    # Checkpoint / Resume helpers
+    # ------------------------------------------------------------------
+
+    def save_checkpoint(self, filepath):
+        """Persist the current mutable simulation state to *filepath*.
+
+        The checkpoint is a dict saved via ``pickle``.  It does **not**
+        contain the full Engine — objects like the NetworkX graph and the
+        scheduler are reconstructed from the config on resume.  Only the
+        state that *changes* during simulation is stored.
+
+        **Important**: this is designed to be called from the consumer of
+        :meth:`run_simulation` (i.e. after ``yield`` returns control).
+        At that point the tick at ``current_timestep`` has been fully
+        simulated but ``complete_timestep`` has not yet run. We therefore
+        save ``current_timestep + 1`` and up-to-date job run times so
+        that resume starts cleanly at the *next* tick.
+        """
+        import pickle
+
+        import copy
+
+        # The tick at current_timestep is done; advance so resume skips it.
+        resume_timestep = self.current_timestep + 1
+
+        # Update run times for running jobs (complete_timestep hasn't run yet).
+        for j in self.running:
+            if j.current_state == JobState.RUNNING:
+                j.current_run_time = self.current_timestep - j.start_time
+
+        # Deep-copy the entire jobs list.  This is the safest way to
+        # guarantee perfect state restoration, because the workload
+        # generator is not perfectly deterministic across Engine instances.
+        jobs_snapshot = copy.deepcopy(self.jobs)
+
+        running_ids = [j.id for j in self.running]
+        queue_ids   = [j.id for j in self.queue]
+
+        state = {
+            # -- simulation clock --
+            'current_timestep':         resume_timestep,
+            'timestep_start':           self.timestep_start,
+            'timestep_end':             self.timestep_end,
+
+            # -- jobs (full deep-copied list) --
+            'jobs':                     jobs_snapshot,
+            'running_ids':              running_ids,
+            'queue_ids':                queue_ids,
+            'jobs_completed':           self.jobs_completed,
+            'jobs_killed':              self.jobs_killed,
+            'job_history_dict':         self.job_history_dict,
+
+            # -- resource manager --
+            'rm_available_nodes':       list(self.resource_manager.available_nodes),
+            'rm_down_nodes':            list(self.resource_manager.down_nodes),
+
+            # -- power manager --
+            'pm_power_state':           self.power_manager.power_state.copy()
+                                            if hasattr(self.power_manager, 'power_state')
+                                               and self.power_manager.power_state is not None
+                                            else None,
+            'pm_history':               list(self.power_manager.history),
+            'pm_loss_history':          list(self.power_manager.loss_history),
+
+            # -- engine scalar state --
+            'sys_power':                self.sys_power,
+            'down_nodes':               list(self.down_nodes),
+            '_last_congestion':         self._last_congestion,
+
+            # -- history lists --
+            'sys_util_history':         list(self.sys_util_history),
+            'scheduler_queue_history':  list(self.scheduler_queue_history),
+            'scheduler_running_history': list(self.scheduler_running_history),
+            'avg_net_tx':               list(self.avg_net_tx),
+            'avg_net_rx':               list(self.avg_net_rx),
+            'net_util_history':         list(self.net_util_history),
+            'net_congestion_history':   list(self.net_congestion_history),
+            'node_occupancy_history':   list(self.node_occupancy_history),
+
+            # -- network model caches (optional, speeds up resume) --
+            'net_global_link_loads':    dict(self.network_model.global_link_loads)
+                                            if self.network_model
+                                               and hasattr(self.network_model, 'global_link_loads')
+                                            else None,
+        }
+
+        tmp_path = str(filepath) + ".tmp"
+        with open(tmp_path, 'wb') as f:
+            pickle.dump(state, f, protocol=pickle.HIGHEST_PROTOCOL)
+        os.replace(tmp_path, filepath)          # atomic on POSIX
+
+    def load_checkpoint(self, filepath):
+        """Restore mutable state from a checkpoint written by :meth:`save_checkpoint`.
+
+        Call **after** ``Engine.__init__`` has completed (so that the
+        config, network graph, scheduler, etc. are already constructed).
+        """
+        import pickle
+
+        with open(filepath, 'rb') as f:
+            state = pickle.load(f)
+
+        # -- simulation clock --
+        self.current_timestep   = state['current_timestep']
+        self.timestep_start     = state['timestep_start']
+        self.timestep_end       = state['timestep_end']
+
+        # -- replace job list with the checkpointed snapshot --
+        self.jobs = state['jobs']
+        self.total_initial_jobs = len(self.jobs)
+        id_to_job = {j.id: j for j in self.jobs}
+
+        # -- running / queue lists (rebuilt from the restored jobs) --
+        self.running = [id_to_job[jid] for jid in state['running_ids'] if jid in id_to_job]
+        self.queue   = [id_to_job[jid] for jid in state['queue_ids']   if jid in id_to_job]
+
+        self.jobs_completed     = state['jobs_completed']
+        self.jobs_killed        = state['jobs_killed']
+        self.job_history_dict   = state['job_history_dict']
+
+        # -- resource manager --
+        self.resource_manager.available_nodes = state['rm_available_nodes']
+        self.resource_manager.down_nodes      = set(state['rm_down_nodes'])
+
+        # -- power manager --
+        if state['pm_power_state'] is not None:
+            self.power_manager.power_state = state['pm_power_state']
+        self.power_manager.history      = state['pm_history']
+        self.power_manager.loss_history = state['pm_loss_history']
+
+        # -- engine scalars --
+        self.sys_power          = state['sys_power']
+        self.down_nodes         = state['down_nodes']
+        self._last_congestion   = state['_last_congestion']
+
+        # -- history lists --
+        self.sys_util_history           = state['sys_util_history']
+        self.scheduler_queue_history    = state['scheduler_queue_history']
+        self.scheduler_running_history  = state['scheduler_running_history']
+        self.avg_net_tx                 = state['avg_net_tx']
+        self.avg_net_rx                 = state['avg_net_rx']
+        self.net_util_history           = state['net_util_history']
+        self.net_congestion_history     = state['net_congestion_history']
+        self.node_occupancy_history     = state['node_occupancy_history']
+
+        # -- network model caches --
+        if state.get('net_global_link_loads') and self.network_model:
+            self.network_model.global_link_loads = state['net_global_link_loads']
+
+    def run_simulation(self, autoshutdown=False, resume=False):
+        """Generator that yields after each simulation tick.
+
+        Parameters
+        ----------
+        resume : bool
+            If ``True``, skip the initial ``prepare_system_state`` call
+            (state was already restored via :meth:`load_checkpoint`).
+        """
 
         if self.scheduler.policy == PolicyType.REPLAY:
             replay = True
@@ -770,23 +954,50 @@ class Engine:
                 print("[DEBUG] run_simulation: First job submit_time: "
                       f"{self.jobs[0].submit_time}, start_time: {self.jobs[0].start_time}")
 
-        # Set times and place jobs that are currently running, onto the system.
-        self.prepare_system_state(all_jobs=self.jobs,
-                                  timestep_start=self.timestep_start, timestep_end=self.timestep_end,
-                                  )
+        if not resume:
+            # Set times and place jobs that are currently running, onto the system.
+            self.prepare_system_state(all_jobs=self.jobs,
+                                      timestep_start=self.timestep_start, timestep_end=self.timestep_end,
+                                      )
 
         # Process jobs in batches for better performance of timestep loop
         all_jobs = self.jobs.copy()
         submit_times = [j.submit_time for j in all_jobs]
-        cursor = 0
 
-        jobs = []
+        if resume:
+            # On resume, advance cursor past jobs already submitted/running/completed.
+            # Jobs whose submit_time <= current_timestep are already handled.
+            cursor = bisect_right(submit_times, self.current_timestep)
+            # The "active batch" (jobs) should contain jobs that are still
+            # pending-but-submitted, running, or in queue — i.e. not yet
+            # completed AND with submit_time <= current_timestep.
+            jobs = [j for j in all_jobs[:cursor]
+                    if j.current_state in (JobState.PENDING, JobState.RUNNING)]
+            # Remove jobs that are already in self.running or self.queue
+            # from the "to submit" list (they are already tracked).
+            running_queue_ids = {j.id for j in self.running} | {j.id for j in self.queue}
+            jobs = [j for j in jobs if j.id not in running_queue_ids]
+        else:
+            cursor = 0
+            jobs = []
+
         # Batch Jobs into 6h windows based on submit_time or twice the time_delta if larger
         batch_window = max(60 * 60 * 6, 2 * self.time_delta)  # at least 6h
 
         sim_state = SimulationState(self.time_delta)
         # listener_thread = threading.Thread(target=keyboard_listener, args=(sim_state,), daemon=True)
         # listener_thread.start()
+
+        # Default tick_return so that the yield is safe even before the
+        # first call to tick() (e.g. when resuming mid-window).
+        tick_return = TickReturn(
+            power_df=None, p_flops=0, g_flops_w=0,
+            system_util=0, fmu_inputs=None, fmu_outputs=None,
+            avg_net_rx=0, avg_net_tx=0, avg_net_util=0,
+            slowdown_per_job=0.0, node_occupancy={},
+        )
+
+        first_iteration = True   # ensures batch load fires on resume
 
         while self.current_timestep < self.timestep_end:  # Runs every second
 
@@ -796,7 +1007,8 @@ class Engine:
 
             current_time_delta = sim_state.get_time_delta()
 
-            if (self.current_timestep % batch_window == 0) or (self.current_timestep == self.timestep_start):
+            if first_iteration or (self.current_timestep % batch_window == 0) or (self.current_timestep == self.timestep_start):
+                first_iteration = False
                 # Add jobs that are within the batching window and remove them from all jobs
                 # jobs += [job for job in all_jobs if job.submit_time <= self.current_timestep + batch_window]
                 # all_jobs[:] = [job for job in all_jobs if job.submit_time > self.current_timestep + batch_window]
@@ -823,8 +1035,8 @@ class Engine:
             if self.debug and self.current_timestep % self.config['UI_UPDATE_FREQ'] == 0:
                 print(".", end="", flush=True)
 
-            # 4. Run tick only at specified time_delta
-            if 0 == (self.current_timestep % current_time_delta):
+            # 4. Run tick only at specified time_delta (relative to sim start)
+            if 0 == ((self.current_timestep - self.timestep_start) % current_time_delta):
                 tick_return = self.tick(time_delta=current_time_delta, replay=replay)
             else:
                 pass
@@ -850,7 +1062,7 @@ class Engine:
                 avg_net_util=tick_return.avg_net_util,
                 slowdown_per_job=tick_return.slowdown_per_job,
                 node_occupancy=tick_return.node_occupancy,
-                time_delta=self.time_delta
+                time_delta=current_time_delta
             )
 
             # 5. Complete the timestep

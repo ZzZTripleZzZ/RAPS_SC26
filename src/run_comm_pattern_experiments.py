@@ -12,18 +12,20 @@ Mini-apps:
 """
 
 import sys
-sys.path.insert(0, '/app')
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
 
 import subprocess
 import json
 import pandas as pd
-from pathlib import Path
 
 # Import RAPS components
 from raps.job import Job, job_dict, CommunicationPattern, MESSAGE_SIZE_64K, MESSAGE_SIZE_1M
-from raps.config import SystemConfig
+from raps.system_config import SystemConfig
 
-DATA_DIR = Path("/app/data/experiments_commpattern")
+DATA_DIR = PROJECT_ROOT / "data" / "experiments_commpattern"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 

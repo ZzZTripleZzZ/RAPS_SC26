@@ -11,7 +11,7 @@ Implements the four operational use cases from Section "ExaDigiT/RAPS as a Versa
        - Congestion heatmap (Time x Link utilization)
 
   UC2: Scheduler Policy Optimization
-       - Compares FCFS vs backfill under realistic network interference
+       - Compares FCFS vs SJF under realistic network interference
        - Measures system utilization, wait time distribution, fragmentation
        - System utilization stacked chart (Running/Idle/Fragmented)
        - Prediction error from dilation (planned vs actual completion)
@@ -51,12 +51,14 @@ from dataclasses import dataclass, field, asdict
 from collections import defaultdict
 
 # Add paths
-sys.path.insert(0, str(Path(__file__).parent.parent))
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(Path(__file__).parent))
 
+import math
 from raps.engine import Engine
 from raps.sim_config import SingleSimConfig
-from raps.system_config import SystemConfig
+from raps.system_config import SystemConfig, get_system_config
 from raps.job import Job, job_dict, CommunicationPattern
 from raps.stats import get_network_stats, get_engine_stats, get_job_stats
 from raps.network.base import (
@@ -64,7 +66,7 @@ from raps.network.base import (
     get_effective_traffic,
 )
 from raps.network.fat_tree import node_id_to_host_name
-from raps.network.dragonfly import parse_dragonfly_host
+from raps.network.dragonfly import parse_dragonfly_host, dragonfly_route
 
 # Optional: traffic templates
 try:
@@ -85,18 +87,88 @@ except ImportError:
 
 
 # ==========================================
+# Node count override (reused from run_frontier.py logic)
+# ==========================================
+
+# Fat-tree k values: k^3/4 hosts
+FATTREE_K = {
+    100:     8,      # 128 hosts
+    1_000:   16,     # 1024 hosts
+    10_000:  36,     # 36^3/4 = 11664 hosts >= 10008
+}
+
+# Dragonfly (d groups, a routers/group, p hosts/router) => d*(d+1)*p hosts
+DRAGONFLY_PARAMS = {
+    100:     {"d": 10,  "a": 10,  "p": 1},   # 110
+    1_000:   {"d": 10,  "a": 10,  "p": 10},  # 1100
+    10_000:  {"d": 24,  "a": 24,  "p": 16},  # 9600
+}
+
+
+def _fattree_k_for_nodes(n: int) -> int:
+    """Find smallest even k such that k^3/4 >= n."""
+    k = 2
+    while (k ** 3) // 4 < n:
+        k += 2
+    return k
+
+
+def _dragonfly_params_for_nodes(n: int) -> dict:
+    """Find d,a,p such that d*(d+1)*p >= n with balanced sizing."""
+    d = max(2, int(math.ceil(n ** (1/3))))
+    p = max(1, int(math.ceil(n / (d * (d + 1)))))
+    a = d  # balanced
+    while d * (d + 1) * p < n:
+        p += 1
+    return {"d": d, "a": a, "p": p}
+
+
+def _override_system_config_uc(system_name: str, node_count: int) -> SystemConfig:
+    """Load a base system config and override node count / network params."""
+    base = get_system_config(system_name)
+    data = base.model_dump(mode="json")
+
+    # Adjust node grid
+    nodes_per_rack = data["system"]["nodes_per_rack"]
+    racks_per_cdu = data["system"]["racks_per_cdu"]
+    needed_racks = math.ceil(node_count / nodes_per_rack)
+    needed_cdus = math.ceil(needed_racks / racks_per_cdu)
+    data["system"]["num_cdus"] = needed_cdus
+    data["system"]["missing_racks"] = []
+    data["system"]["down_nodes"] = []
+
+    # Override network topology params
+    if data.get("network"):
+        topo = data["network"]["topology"]
+        if topo == "fat-tree":
+            if node_count not in FATTREE_K:
+                FATTREE_K[node_count] = _fattree_k_for_nodes(node_count)
+            k = FATTREE_K[node_count]
+            data["network"]["fattree_k"] = k
+        elif topo == "dragonfly":
+            if node_count not in DRAGONFLY_PARAMS:
+                DRAGONFLY_PARAMS[node_count] = _dragonfly_params_for_nodes(node_count)
+            params = DRAGONFLY_PARAMS[node_count]
+            data["network"]["dragonfly_d"] = params["d"]
+            data["network"]["dragonfly_a"] = params["a"]
+            data["network"]["dragonfly_p"] = params["p"]
+
+    return SystemConfig.model_validate(data)
+
+
+# ==========================================
 # Configuration
 # ==========================================
 
-OUTPUT_DIR = Path("/app/output/use_cases")
+OUTPUT_DIR = PROJECT_ROOT / "output" / "use_cases"
 FIGURES_DIR = OUTPUT_DIR / "figures"
-MATRIX_DIR = Path("/app/data/matrices")
+MATRIX_DIR = PROJECT_ROOT / "data" / "matrices"
 
 MINI_APP_PATTERNS = {
     'lulesh': CommunicationPattern.STENCIL_3D,
     'comd': CommunicationPattern.STENCIL_3D,
     'hpgmg': CommunicationPattern.STENCIL_3D,
-    'cosp2': CommunicationPattern.ALL_TO_ALL,
+    'cosp2': CommunicationPattern.STENCIL_3D,  # Use STENCIL_3D for performance (O(N) vs O(N²))
 }
 
 ROUTING_COLORS = {
@@ -107,14 +179,17 @@ ROUTING_COLORS = {
     'adaptive': '#E17055',
 }
 
+POLICY_COLORS = {
+    'fcfs': '#6C5CE7',
+    'fcfs+easy': '#00B894',
+    'fcfs+firstfit': '#0984E3',
+    'sjf': '#FDCB6E',
+}
+
 ALLOCATION_COLORS = {
     'contiguous': '#FF6B6B',
     'random': '#4ECDC4',
-}
-
-POLICY_COLORS = {
-    'fcfs': '#6C5CE7',
-    'backfill': '#FDCB6E',
+    'hybrid': '#A29BFE',
 }
 
 
@@ -127,7 +202,7 @@ class UCSimConfig(SingleSimConfig):
     pass
 
 
-def override_system_routing(sim_config, routing, ugal_threshold=2.0, valiant_bias=0.05):
+def override_system_routing(sim_config, routing, ugal_threshold=2.0, valiant_bias=0.3):
     """Override routing algorithm in a SimConfig's SystemConfig."""
     sys_cfg = sim_config.system_configs[0]
     data = sys_cfg.model_dump(mode='json')
@@ -148,13 +223,20 @@ def generate_workload(
     num_jobs: int = 30,
     min_nodes: int = 8,
     max_nodes: int = 256,
-    min_duration: int = 300,
-    max_duration: int = 1800,
+    min_duration: int = 120,
+    max_duration: int = 600,
     seed: int = 42,
+    mean_inter_arrival: float = 60.0,
 ) -> List[Job]:
     """
     Generate synthetic workload with log-normal job sizes and Poisson arrivals.
     Jobs have realistic network traces assigned based on communication pattern.
+
+    Parameters
+    ----------
+    mean_inter_arrival : float
+        Mean seconds between job arrivals (Poisson process). Default 60s.
+        Set lower (e.g. 10–20s) for high-load scenarios.
     """
     rng = np.random.default_rng(seed)
     jobs = []
@@ -167,12 +249,11 @@ def generate_workload(
     sizes = np.clip(sizes, min_nodes, max_nodes)
 
     # Poisson inter-arrival times
-    mean_inter_arrival = 60  # 1 job per minute on average
     inter_arrivals = rng.exponential(mean_inter_arrival, num_jobs)
     arrival_times = np.cumsum(inter_arrivals).astype(int)
 
-    # Log-normal durations
-    raw_durations = rng.lognormal(mean=6.5, sigma=0.8, size=num_jobs)
+    # Log-normal durations (mean=5.8 => exp(5.8) ≈ 330s, centered in [120, 600])
+    raw_durations = rng.lognormal(mean=5.8, sigma=0.6, size=num_jobs)
     durations = np.clip(raw_durations, min_duration, max_duration).astype(int)
 
     # Mini-app assignment
@@ -191,10 +272,12 @@ def generate_workload(
         trace_quanta = 15
         trace_len = max(1, duration // trace_quanta)
 
-        if comm_pattern == CommunicationPattern.STENCIL_3D:
-            base_bw = job_size * 6 * 150.0  # 6 neighbors, ~150 B each
-        else:
-            base_bw = job_size * (job_size - 1) * 50.0  # all-to-all
+        # Realistic HPC traffic: ~1.25 GB/s per node on 100 Gbps NICs
+        # tx_volume_bytes = per-node total send volume per trace_quanta.
+        # The coefficient functions (compute_stencil_3d_coefficients etc.) already
+        # iterate over all N nodes' pairs, so we must NOT multiply by job_size here.
+        NIC_BW_BYTES_PER_S = 1.25e9  # 10 Gbps effective per node (typical HPC)
+        base_bw = NIC_BW_BYTES_PER_S * trace_quanta  # bytes per node per quanta
 
         ntx_trace = [base_bw] * trace_len
         nrx_trace = [base_bw] * trace_len
@@ -268,6 +351,11 @@ def compute_hop_counts(engine):
     Compute hop count distribution for all running jobs.
     Returns list of hop counts (one per communicating pair).
     Uses the network graph and scheduled node placements.
+
+    For dragonfly, uses routing-aware path computation so that non-minimal
+    algorithms (ugal, valiant) show longer average hop counts than minimal.
+    For fat-tree, uses shortest-path (minimal = ecmp hop lengths are equal;
+    adaptive may differ but path enumeration is too expensive for sampling).
     """
     hop_counts = []
     if not engine.simulate_network or not engine.network_model:
@@ -277,6 +365,8 @@ def compute_hop_counts(engine):
     G = net_model.net_graph
     if G is None:
         return hop_counts
+
+    routing = net_model.routing_algorithm
 
     for job in engine.jobs:
         if not job.scheduled_nodes or len(job.scheduled_nodes) < 2:
@@ -300,7 +390,18 @@ def compute_hop_counts(engine):
                     if pairs_checked >= max_pairs:
                         break
                     try:
-                        path = nx.shortest_path(G, hosts[i], hosts[j_idx])
+                        if net_model.topology == "dragonfly":
+                            # Use routing-aware path so ugal/valiant show higher
+                            # hop counts than minimal routing.
+                            D = getattr(net_model, 'dragonfly_d', 0)
+                            A = getattr(net_model, 'dragonfly_a', 0)
+                            path = dragonfly_route(
+                                hosts[i], hosts[j_idx], routing, D, A,
+                                ugal_threshold=getattr(net_model, 'ugal_threshold', 2.0),
+                                valiant_bias=getattr(net_model, 'valiant_bias', 0.0),
+                            )
+                        else:
+                            path = nx.shortest_path(G, hosts[i], hosts[j_idx])
                         # Hop count = number of edges = len(path) - 1
                         hop_counts.append(len(path) - 1)
                         pairs_checked += 1
@@ -409,7 +510,14 @@ def compute_comm_intensity(job):
 def collect_per_tick_utilization(engine):
     """
     Collect per-tick node utilization breakdown from engine histories.
-    Returns lists of (timestep, running_nodes, idle_nodes, fragmented_nodes).
+
+    Uses sys_util_history (timestep, util%) to derive running nodes, and
+    scheduler_running_history (queue length at each tick) to estimate
+    fragmentation: if there are jobs waiting in the queue while nodes sit
+    idle, those idle nodes are likely fragmented (too scattered to satisfy
+    any pending request).
+
+    Returns list of dicts with keys: timestep, running, idle, fragmented.
     """
     total_nodes = engine.config['AVAILABLE_NODES']
     down_nodes_count = len(engine.config.get('DOWN_NODES', []))
@@ -417,16 +525,23 @@ def collect_per_tick_utilization(engine):
 
     util_breakdown = []
     for i, (ts, util_pct) in enumerate(engine.sys_util_history):
-        running_nodes = int(round(engine.num_active_nodes
-                                   if i == len(engine.sys_util_history) - 1
-                                   else util_pct / 100.0 * available))
-        idle_nodes = available - running_nodes
-        # Fragmented = nodes that are free but can't be allocated due to fragmentation
-        # Approximate: free nodes minus largest contiguous free block
-        free_count = idle_nodes
-        queue_len = engine.scheduler_running_history[i] if i < len(engine.scheduler_running_history) else 0
-        fragmented = min(free_count, queue_len * 2) if queue_len > 0 else 0
-        truly_idle = max(0, free_count - fragmented)
+        # Derive running node count from utilization percentage
+        running_nodes = int(round(util_pct / 100.0 * available))
+        running_nodes = max(0, min(running_nodes, available))
+        free_count = available - running_nodes
+
+        # scheduler_running_history stores queue length (pending jobs) at each tick.
+        # If queue > 0 and free nodes exist, those free nodes are fragmented.
+        queue_len = 0
+        if i < len(engine.scheduler_running_history):
+            queue_len = engine.scheduler_running_history[i]
+
+        if queue_len > 0 and free_count > 0:
+            # All free nodes are considered fragmented when jobs are waiting
+            fragmented = free_count
+        else:
+            fragmented = 0
+        truly_idle = free_count - fragmented
 
         util_breakdown.append({
             'timestep': ts,
@@ -499,6 +614,37 @@ def compute_power_decomposition(engine):
     result['dynamic_timeline'] = dynamic_timeline
 
     return result
+
+
+# ==========================================
+# Incremental CSV Helpers
+# ==========================================
+
+def _load_done_labels(csv_path) -> set:
+    """Return set of variant labels already saved in a result CSV."""
+    if csv_path is None or not Path(csv_path).exists():
+        return set()
+    try:
+        df = pd.read_csv(csv_path)
+        if 'label' in df.columns:
+            return set(df['label'].tolist())
+    except Exception:
+        pass
+    return set()
+
+
+def _append_result_to_csv(csv_path, result) -> None:
+    """Append a single SimResult row to CSV immediately (create or append)."""
+    if csv_path is None or result is None:
+        return
+    row = {k: v for k, v in asdict(result).items() if not isinstance(v, list)}
+    row_df = pd.DataFrame([row])
+    csv_path = Path(csv_path)
+    if csv_path.exists():
+        row_df.to_csv(csv_path, mode='a', header=False, index=False)
+    else:
+        row_df.to_csv(csv_path, index=False)
+    print(f"  [Saved] {csv_path.name} <- {result.label}")
 
 
 # ==========================================
@@ -577,11 +723,19 @@ def run_simulation(
     routing: str = None,
     allocation: str = "contiguous",
     policy: str = "fcfs",
+    backfill: str = None,
     simulate_network: bool = True,
     label: str = "",
+    node_count: int = None,
 ) -> Optional[SimResult]:
     """
     Run a single DES simulation with full metric collection.
+
+    Parameters
+    ----------
+    node_count : int, optional
+        If given, override the system config to simulate this many nodes
+        (adjusts CDU layout, network topology params, etc.).
     """
     config_dict = {
         'system': system,
@@ -599,6 +753,8 @@ def run_simulation(
         'policy': policy,
         'allocation': allocation,
         'numjobs': len(jobs),
+        # Backfill policy (None = no backfill)
+        'backfill': backfill,
         # Required defaults for synthetic workload generator
         'jobsize_distribution': ['uniform'],
         'walltime_distribution': ['uniform'],
@@ -608,6 +764,11 @@ def run_simulation(
         t_start = time.perf_counter()
 
         sim_config = UCSimConfig(**config_dict)
+
+        # Override system config for different node counts
+        if node_count is not None:
+            sys_cfg = _override_system_config_uc(system, node_count)
+            sim_config._system_configs = [sys_cfg]
 
         # Override routing
         if routing and simulate_network:
@@ -644,6 +805,7 @@ def run_simulation(
 
         for job in all_jobs:
             job_sizes.append(job.nodes_required)
+            # Use slowdown_factor (congestion level at last active tick)
             sf = getattr(job, 'slowdown_factor', 1.0)
             job_slowdowns.append(sf)
             job_comm_intensities.append(compute_comm_intensity(job))
@@ -701,6 +863,11 @@ def run_simulation(
         # Prediction error (planned vs actual due to dilation)
         pred_errors = compute_prediction_error(engine)
 
+        # Compute slowdown from per-job congestion levels at last active tick
+        # (job.slowdown_factor = net_cong at last tick; 1.0 for non-congested jobs)
+        avg_job_slowdown_val = float(np.mean(job_slowdowns)) if job_slowdowns else 1.0
+        max_job_slowdown_val = float(max(job_slowdowns)) if job_slowdowns else 1.0
+
         # Jobs completed
         jobs_completed = sum(1 for j in all_jobs
                             if getattr(j, 'end_time', None) is not None)
@@ -717,8 +884,8 @@ def run_simulation(
             speedup=speedup,
             ticks=tick_count,
             avg_network_util=net_stats.get('avg_network_util', 0.0),
-            avg_job_slowdown=net_stats.get('avg_per_job_slowdown', 1.0),
-            max_job_slowdown=net_stats.get('max_per_job_slowdown', 1.0),
+            avg_job_slowdown=avg_job_slowdown_val,
+            max_job_slowdown=max_job_slowdown_val,
             avg_congestion=avg_cong,
             max_congestion=max_cong,
             global_throughput_bps=global_throughput_bps,
@@ -784,59 +951,103 @@ def print_result(result: SimResult, indent: str = "  "):
 # UC1: Adaptive Routing and Congestion Mitigation
 # ==========================================
 
-def run_uc1_routing(jobs, system, duration_minutes, **kwargs):
-    """
-    UC1: Compare static minimal routing vs adaptive routing.
+def _get_topology(system: str) -> str:
+    """Return the network topology for a system."""
+    base = get_system_config(system)
+    data = base.model_dump(mode="json")
+    return data.get("network", {}).get("topology", "fat-tree")
 
-    Evaluates the impact of routing policies on the bully effect
-    in Dragonfly topology. Compares minimal (fixed paths) against
-    adaptive routing (sensing local queue depth / link utilization).
+
+def _all_routing_algos_for_system(system: str) -> List[str]:
+    """Return all available routing algorithms for a system's topology."""
+    topo = _get_topology(system)
+    if topo == "dragonfly":
+        return ["minimal", "ugal", "valiant"]
+    else:  # fat-tree
+        return ["minimal", "ecmp", "adaptive"]
+
+
+def _adaptive_routing_for_system(system: str) -> str:
+    """Return the best adaptive routing algorithm for a system's topology."""
+    topo = _get_topology(system)
+    if topo == "dragonfly":
+        return "ugal"
+    else:
+        return "adaptive"
+
+
+def run_uc1_routing(jobs, system, duration_minutes, node_count=None, delta_t=1,
+                    resume_csv=None, done_labels=None, **kwargs):
+    """
+    UC1: Compare ALL routing algorithms for the system's topology.
+
+    Evaluates the impact of routing policies on the bully effect.
+    - Dragonfly (Frontier): minimal, ugal, valiant
+    - Fat-tree (Lassen): minimal, ecmp, adaptive
     """
     print("\n" + "=" * 60)
     print("UC1: Adaptive Routing and Congestion Mitigation")
     print("=" * 60)
 
-    routing_algos = ['minimal', 'adaptive']
+    routing_algos = _all_routing_algos_for_system(system)
+    topo = _get_topology(system)
+    print(f"  Topology: {topo}")
+    print(f"  Routing algorithms: {', '.join(routing_algos)}")
     results = {}
+    done_labels = done_labels or set()
 
     for routing in routing_algos:
+        label = f"UC1_{routing}"
+        if label in done_labels:
+            print(f"\n  [SKIP] routing={routing} (already saved)")
+            continue
         print(f"\n  Running with routing={routing}...")
         result = run_simulation(
             jobs=jobs,
             system=system,
             duration_minutes=duration_minutes,
+            delta_t=delta_t,
             routing=routing,
             allocation='contiguous',
             policy='fcfs',
             simulate_network=True,
-            label=f"UC1_{routing}",
+            label=label,
+            node_count=node_count,
         )
         if result:
             results[routing] = result
             print_result(result, indent="    ")
+            _append_result_to_csv(resume_csv, result)
 
-    # Comparison
+    # Comparison table
     if len(results) >= 2:
-        print(f"\n  --- UC1 Comparison ---")
-        print(f"  {'Metric':<30} {'Minimal':>12} {'Adaptive':>12} {'Delta':>12}")
-        print(f"  {'-'*66}")
-        r_min = results.get('minimal')
-        r_ada = results.get('adaptive')
-        if r_min and r_ada:
-            comparisons = [
-                ('Avg Slowdown', r_min.avg_job_slowdown, r_ada.avg_job_slowdown),
-                ('Max Slowdown', r_min.max_job_slowdown, r_ada.max_job_slowdown),
-                ('Dilated Jobs (%)', r_min.dilated_pct, r_ada.dilated_pct),
-                ('Max Congestion', r_min.max_congestion, r_ada.max_congestion),
-                ('Avg Network Util (%)', r_min.avg_network_util, r_ada.avg_network_util),
-                ('Global Throughput (Gbps)', r_min.global_throughput_bps/1e9,
-                 r_ada.global_throughput_bps/1e9),
-                ('Potential Bullies', float(r_min.potential_bullies),
-                 float(r_ada.potential_bullies)),
-            ]
-            for name, v_min, v_ada in comparisons:
-                delta = v_ada - v_min
-                print(f"  {name:<30} {v_min:>12.3f} {v_ada:>12.3f} {delta:>+12.3f}")
+        print(f"\n  --- UC1 Comparison ({topo}) ---")
+        r_keys = list(results.keys())
+        header = f"  {'Metric':<30}" + "".join(f" {k:>12}" for k in r_keys)
+        print(header)
+        print(f"  {'-'*(30 + 13 * len(r_keys))}")
+
+        metrics = [
+            ('Avg Slowdown', 'avg_job_slowdown'),
+            ('Max Slowdown', 'max_job_slowdown'),
+            ('Dilated Jobs (%)', 'dilated_pct'),
+            ('Max Congestion', 'max_congestion'),
+            ('Avg Network Util (%)', 'avg_network_util'),
+            ('Throughput (Gbps)', None),  # special
+            ('Potential Bullies', None),  # special
+        ]
+        for name, attr in metrics:
+            vals = []
+            for k in r_keys:
+                r = results[k]
+                if attr:
+                    vals.append(getattr(r, attr))
+                elif name == 'Throughput (Gbps)':
+                    vals.append(r.global_throughput_bps / 1e9)
+                elif name == 'Potential Bullies':
+                    vals.append(float(r.potential_bullies))
+            row = f"  {name:<30}" + "".join(f" {v:>12.3f}" for v in vals)
+            print(row)
 
     return results
 
@@ -845,36 +1056,55 @@ def run_uc1_routing(jobs, system, duration_minutes, **kwargs):
 # UC2: Scheduler Policy Optimization
 # ==========================================
 
-def run_uc2_scheduling(jobs, system, duration_minutes, **kwargs):
+def run_uc2_scheduling(jobs, system, duration_minutes, node_count=None, delta_t=1,
+                       resume_csv=None, done_labels=None, **kwargs):
     """
-    UC2: Compare FCFS vs Backfill scheduling under network interference.
+    UC2: Compare scheduling policies under network interference.
 
-    The key insight is that backfill scheduling's slot predictions are
-    disrupted by network congestion dilation: running jobs take longer
-    than predicted, invalidating reservation windows.
+    Compares FCFS (no backfill), FCFS+Easy backfill, FCFS+Firstfit backfill,
+    and SJF. Under network congestion, runtime dilation disrupts scheduling
+    reservations since actual job completion deviates from estimates.
     """
     print("\n" + "=" * 60)
     print("UC2: Scheduler Policy Optimization")
     print("=" * 60)
 
-    policies = ['fcfs', 'backfill']
-    results = {}
+    adaptive_algo = _adaptive_routing_for_system(system)
 
-    for policy in policies:
-        print(f"\n  Running with policy={policy}...")
+    sched_configs = [
+        ('fcfs',           'fcfs', None),
+        ('fcfs+firstfit',  'fcfs', 'firstfit'),
+        ('sjf',            'sjf',  None),
+    ]
+    print(f"  Routing: {adaptive_algo}")
+    print(f"  Policies: {', '.join(c[0] for c in sched_configs)}")
+    results = {}
+    done_labels = done_labels or set()
+
+    for sched_label, policy, bf in sched_configs:
+        label = f"UC2_{sched_label}"
+        if label in done_labels:
+            print(f"\n  [SKIP] policy={sched_label} (already saved)")
+            continue
+        bf_str = f" + backfill={bf}" if bf else ""
+        print(f"\n  Running with policy={policy}{bf_str}...")
         result = run_simulation(
             jobs=jobs,
             system=system,
             duration_minutes=duration_minutes,
-            routing='adaptive',
+            delta_t=delta_t,
+            routing=adaptive_algo,
             allocation='contiguous',
             policy=policy,
+            backfill=bf,
             simulate_network=True,
-            label=f"UC2_{policy}",
+            label=label,
+            node_count=node_count,
         )
         if result:
-            results[policy] = result
+            results[sched_label] = result
             print_result(result, indent="    ")
+            _append_result_to_csv(resume_csv, result)
             print(f"    Avg wait time: {result.avg_wait_time:.1f}s, "
                   f"Max wait time: {result.max_wait_time:.1f}s")
 
@@ -886,7 +1116,7 @@ def run_uc2_scheduling(jobs, system, duration_minutes, **kwargs):
                 large_waits = [w for w, s in zip(result.job_wait_times, result.job_sizes)
                                if s > median_size]
                 if small_waits:
-                    print(f"    Small jobs (<=  {int(median_size)} nodes) avg wait: "
+                    print(f"    Small jobs (<= {int(median_size)} nodes) avg wait: "
                           f"{np.mean(small_waits):.1f}s")
                 if large_waits:
                     print(f"    Large jobs (> {int(median_size)} nodes) avg wait: "
@@ -901,25 +1131,32 @@ def run_uc2_scheduling(jobs, system, duration_minutes, **kwargs):
                     print(f"    Prediction error (dilated jobs): avg={avg_err:.1f}%, "
                           f"max={max_err:.1f}%")
 
-    # Comparison
+    # Comparison table
     if len(results) >= 2:
         print(f"\n  --- UC2 Comparison ---")
-        print(f"  {'Metric':<30} {'FCFS':>12} {'Backfill':>12} {'Delta':>12}")
-        print(f"  {'-'*66}")
-        r_fcfs = results.get('fcfs')
-        r_bf = results.get('backfill')
-        if r_fcfs and r_bf:
-            comparisons = [
-                ('Jobs Completed', float(r_fcfs.jobs_completed), float(r_bf.jobs_completed)),
-                ('Avg Wait Time (s)', r_fcfs.avg_wait_time, r_bf.avg_wait_time),
-                ('Max Wait Time (s)', r_fcfs.max_wait_time, r_bf.max_wait_time),
-                ('Avg Slowdown', r_fcfs.avg_job_slowdown, r_bf.avg_job_slowdown),
-                ('Dilated Jobs (%)', r_fcfs.dilated_pct, r_bf.dilated_pct),
-                ('Avg Network Util (%)', r_fcfs.avg_network_util, r_bf.avg_network_util),
-            ]
-            for name, v1, v2 in comparisons:
-                delta = v2 - v1
-                print(f"  {name:<30} {v1:>12.3f} {v2:>12.3f} {delta:>+12.3f}")
+        r_keys = list(results.keys())
+        header = f"  {'Metric':<30}" + "".join(f" {k:>14}" for k in r_keys)
+        print(header)
+        print(f"  {'-'*(30 + 15 * len(r_keys))}")
+
+        metric_attrs = [
+            ('Jobs Completed', 'jobs_completed', True),
+            ('Avg Wait Time (s)', 'avg_wait_time', False),
+            ('Max Wait Time (s)', 'max_wait_time', False),
+            ('Avg Slowdown', 'avg_job_slowdown', False),
+            ('Dilated Jobs (%)', 'dilated_pct', False),
+            ('Avg Network Util (%)', 'avg_network_util', False),
+        ]
+        for name, attr, as_int in metric_attrs:
+            vals = []
+            for k in r_keys:
+                v = getattr(results[k], attr)
+                vals.append(float(v))
+            if as_int:
+                row = f"  {name:<30}" + "".join(f" {int(v):>14d}" for v in vals)
+            else:
+                row = f"  {name:<30}" + "".join(f" {v:>14.3f}" for v in vals)
+            print(row)
 
     return results
 
@@ -928,69 +1165,91 @@ def run_uc2_scheduling(jobs, system, duration_minutes, **kwargs):
 # UC3: Topology-Aware Node Placement
 # ==========================================
 
-def run_uc3_placement(jobs, system, duration_minutes, **kwargs):
+def run_uc3_placement(jobs, system, duration_minutes, node_count=None, delta_t=1,
+                      resume_csv=None, done_labels=None, **kwargs):
     """
-    UC3: Compare random vs contiguous node placement.
+    UC3: Compare all node placement strategies.
 
-    Contiguous placement keeps jobs within a single electrical group
-    to minimize global link usage (Short Circuit). Random placement
-    spreads jobs across the fabric, increasing global link pressure.
+    - Contiguous: keeps jobs within a single electrical group (Short Circuit)
+    - Random: spreads jobs across the fabric
+    - Hybrid: comm-intensive jobs get contiguous, others get random
     """
     print("\n" + "=" * 60)
     print("UC3: Topology-Aware Node Placement")
     print("=" * 60)
 
-    allocations = ['contiguous', 'random']
+    adaptive_algo = _adaptive_routing_for_system(system)
+    allocations = ['contiguous', 'random', 'hybrid']
+    print(f"  Allocation strategies: {', '.join(allocations)}")
     results = {}
+    done_labels = done_labels or set()
 
     for alloc in allocations:
+        label = f"UC3_{alloc}"
+        if label in done_labels:
+            print(f"\n  [SKIP] allocation={alloc} (already saved)")
+            continue
         print(f"\n  Running with allocation={alloc}...")
         result = run_simulation(
             jobs=jobs,
             system=system,
             duration_minutes=duration_minutes,
-            routing='adaptive',
+            delta_t=delta_t,
+            routing=adaptive_algo,
             allocation=alloc,
             policy='fcfs',
             simulate_network=True,
-            label=f"UC3_{alloc}",
+            label=label,
+            node_count=node_count,
         )
         if result:
             results[alloc] = result
             print_result(result, indent="    ")
+            _append_result_to_csv(resume_csv, result)
 
-    # Comparison
+    # Comparison table
     if len(results) >= 2:
         print(f"\n  --- UC3 Comparison ---")
-        print(f"  {'Metric':<30} {'Contiguous':>12} {'Random':>12} {'Delta':>12}")
-        print(f"  {'-'*66}")
-        r_cont = results.get('contiguous')
+        r_keys = list(results.keys())
+        header = f"  {'Metric':<30}" + "".join(f" {k:>12}" for k in r_keys)
+        print(header)
+        print(f"  {'-'*(30 + 13 * len(r_keys))}")
+
+        metric_attrs = [
+            ('Avg Slowdown', 'avg_job_slowdown'),
+            ('Max Slowdown', 'max_job_slowdown'),
+            ('Dilated Jobs (%)', 'dilated_pct'),
+            ('Max Congestion', 'max_congestion'),
+            ('Avg Network Util (%)', 'avg_network_util'),
+            ('Avg Hop Count', 'avg_hop_count'),
+            ('Global/Local Ratio', 'global_local_ratio'),
+            ('Potential Bullies', None),
+        ]
+        for name, attr in metric_attrs:
+            vals = []
+            for k in r_keys:
+                r = results[k]
+                if attr:
+                    vals.append(getattr(r, attr))
+                else:
+                    vals.append(float(r.potential_bullies))
+            row = f"  {name:<30}" + "".join(f" {v:>12.3f}" for v in vals)
+            print(row)
+
+        # Application speedup: each strategy relative to random
         r_rand = results.get('random')
+        if r_rand and r_rand.avg_job_slowdown > 0:
+            print(f"\n  Speedup relative to random placement:")
+            for k in r_keys:
+                if k != 'random':
+                    benefit = r_rand.avg_job_slowdown / results[k].avg_job_slowdown
+                    print(f"    {k}: {benefit:.2f}x")
+
+        # Speedup vs communication intensity (contiguous vs random)
+        r_cont = results.get('contiguous')
         if r_cont and r_rand:
-            comparisons = [
-                ('Avg Slowdown', r_cont.avg_job_slowdown, r_rand.avg_job_slowdown),
-                ('Max Slowdown', r_cont.max_job_slowdown, r_rand.max_job_slowdown),
-                ('Dilated Jobs (%)', r_cont.dilated_pct, r_rand.dilated_pct),
-                ('Max Congestion', r_cont.max_congestion, r_rand.max_congestion),
-                ('Avg Network Util (%)', r_cont.avg_network_util, r_rand.avg_network_util),
-                ('Avg Hop Count', r_cont.avg_hop_count, r_rand.avg_hop_count),
-                ('Global/Local Ratio', r_cont.global_local_ratio, r_rand.global_local_ratio),
-                ('Potential Bullies', float(r_cont.potential_bullies),
-                 float(r_rand.potential_bullies)),
-            ]
-            for name, v1, v2 in comparisons:
-                delta = v2 - v1
-                print(f"  {name:<30} {v1:>12.3f} {v2:>12.3f} {delta:>+12.3f}")
-
-            # Application speedup from placement
-            if r_rand.avg_job_slowdown > 0:
-                placement_benefit = r_rand.avg_job_slowdown / r_cont.avg_job_slowdown
-                print(f"\n  Contiguous placement speedup vs random: {placement_benefit:.2f}x")
-
-            # Speedup vs communication intensity
-            print(f"\n  --- Speedup vs Communication Intensity ---")
+            print(f"\n  --- Speedup vs Communication Intensity (Contiguous vs Random) ---")
             if r_cont.job_comm_intensities and r_rand.job_comm_intensities:
-                # Group jobs by comm intensity quartile
                 all_intensities = r_cont.job_comm_intensities + r_rand.job_comm_intensities
                 q25, q50, q75 = np.percentile(all_intensities, [25, 50, 75])
                 labels_qi = ['Low', 'Med-Low', 'Med-High', 'High']
@@ -1016,88 +1275,126 @@ def run_uc3_placement(jobs, system, duration_minutes, **kwargs):
 # UC4: Energy Cost of Congestion
 # ==========================================
 
-def run_uc4_energy(jobs, system, duration_minutes, **kwargs):
+def run_uc4_energy(jobs, system, duration_minutes, node_count=None, delta_t=1,
+                   resume_csv=None, done_labels=None, **kwargs):
     """
     UC4: Quantify the energy cost of network congestion.
 
+    Compares energy-to-solution under:
+    1. No network (ideal baseline)
+    2. Each routing algorithm (to show how routing choice affects energy)
+
     When congestion dilates job runtime, static power (leakage) continues
-    to accumulate even though dynamic work is stalled. This creates an
-    "energy tax" proportional to the dilation factor.
+    to accumulate even though dynamic work is stalled — the "Energy Tax."
     """
     print("\n" + "=" * 60)
     print("UC4: Energy Cost of Congestion")
     print("=" * 60)
 
-    # Run with and without network (baseline vs congested)
-    configs = {
-        'no_congestion': {'simulate_network': False, 'label': 'Ideal (no congestion)'},
-        'with_congestion': {'simulate_network': True, 'label': 'With network congestion'},
-    }
-    results = {}
+    routing_algos = _all_routing_algos_for_system(system)
 
-    for config_name, cfg in configs.items():
-        print(f"\n  Running: {cfg['label']}...")
+    # Build experiment configs: baseline (no network) + each routing algo
+    configs = [('no_congestion', None, False)]  # (label, routing, simulate_network)
+    for algo in routing_algos:
+        configs.append((algo, algo, True))
+
+    print(f"  Configurations: no_congestion, {', '.join(routing_algos)}")
+    results = {}
+    done_labels = done_labels or set()
+
+    for config_label, routing, sim_net in configs:
+        label = f"UC4_{config_label}"
+        if label in done_labels:
+            print(f"\n  [SKIP] {config_label} (already saved)")
+            continue
+        desc = "Ideal (no congestion)" if not sim_net else f"routing={routing}"
+        print(f"\n  Running: {desc}...")
         result = run_simulation(
             jobs=jobs,
             system=system,
             duration_minutes=duration_minutes,
-            routing='adaptive',
+            delta_t=delta_t,
+            routing=routing,
             allocation='contiguous',
             policy='fcfs',
-            simulate_network=cfg['simulate_network'],
-            label=f"UC4_{config_name}",
+            simulate_network=sim_net,
+            label=label,
+            node_count=node_count,
         )
         if result:
-            results[config_name] = result
+            results[config_label] = result
             print_result(result, indent="    ")
+            _append_result_to_csv(resume_csv, result)
             print(f"    Total energy: {result.total_energy_joules:.0f} J, "
                   f"Avg power: {result.avg_power_watts:.1f} W, "
                   f"Peak power: {result.peak_power_watts:.1f} W")
 
-    # Energy comparison
-    if 'no_congestion' in results and 'with_congestion' in results:
-        r_ideal = results['no_congestion']
-        r_cong = results['with_congestion']
-
+    # Energy comparison table
+    if len(results) >= 2:
         print(f"\n  --- UC4 Energy Cost Analysis ---")
-        print(f"  {'Metric':<30} {'Ideal':>12} {'Congested':>12} {'Overhead':>12}")
-        print(f"  {'-'*66}")
+        r_keys = list(results.keys())
+        header = f"  {'Metric':<30}" + "".join(f" {k:>14}" for k in r_keys)
+        print(header)
+        print(f"  {'-'*(30 + 15 * len(r_keys))}")
 
-        e_ideal = r_ideal.total_energy_joules
-        e_cong = r_cong.total_energy_joules
-        overhead = (e_cong - e_ideal) / e_ideal * 100 if e_ideal > 0 else 0
-
-        comparisons = [
-            ('Total Energy (J)', e_ideal, e_cong),
-            ('Avg Power (W)', r_ideal.avg_power_watts, r_cong.avg_power_watts),
-            ('Peak Power (W)', r_ideal.peak_power_watts, r_cong.peak_power_watts),
-            ('Jobs Completed', float(r_ideal.jobs_completed), float(r_cong.jobs_completed)),
+        metric_list = [
+            ('Total Energy (J)', 'total_energy_joules'),
+            ('Avg Power (W)', 'avg_power_watts'),
+            ('Peak Power (W)', 'peak_power_watts'),
+            ('Jobs Completed', 'jobs_completed'),
+            ('Dilated Jobs (%)', 'dilated_pct'),
+            ('Avg Slowdown', 'avg_job_slowdown'),
         ]
-        for name, v1, v2 in comparisons:
-            delta = v2 - v1
-            print(f"  {name:<30} {v1:>12.1f} {v2:>12.1f} {delta:>+12.1f}")
+        for name, attr in metric_list:
+            vals = [float(getattr(results[k], attr)) for k in r_keys]
+            row = f"  {name:<30}" + "".join(f" {v:>14.1f}" for v in vals)
+            print(row)
 
-        if overhead != 0:
-            print(f"\n  Energy overhead from congestion: {overhead:+.1f}%")
+        # Energy overhead relative to ideal
+        r_ideal = results.get('no_congestion')
+        if r_ideal and r_ideal.total_energy_joules > 0:
+            e_ideal = r_ideal.total_energy_joules
+            print(f"\n  Energy overhead vs ideal (no congestion):")
+            for k in r_keys:
+                if k == 'no_congestion':
+                    continue
+                e = results[k].total_energy_joules
+                overhead = (e - e_ideal) / e_ideal * 100
+                print(f"    {k}: {overhead:+.1f}%")
 
-        # Static vs dynamic power decomposition
-        print(f"\n  --- Power Decomposition ---")
-        print(f"  {'Component':<25} {'Ideal (kW)':>12} {'Congested (kW)':>15}")
-        print(f"  {'-'*52}")
-        print(f"  {'Static (idle leakage)':<25} {r_ideal.static_power_kw:>12.1f} "
-              f"{r_cong.static_power_kw:>15.1f}")
-        print(f"  {'Dynamic (compute)':<25} {r_ideal.dynamic_power_kw:>12.1f} "
-              f"{r_cong.dynamic_power_kw:>15.1f}")
-        print(f"  {'Static fraction':<25} {r_ideal.static_power_pct:>11.1f}% "
-              f"{r_cong.static_power_pct:>14.1f}%")
+        # Power decomposition for ideal vs worst congestion
+        congested_keys = [k for k in r_keys if k != 'no_congestion']
+        if r_ideal and congested_keys:
+            # Pick the routing with highest energy for detailed decomposition
+            worst_key = max(congested_keys,
+                           key=lambda k: results[k].total_energy_joules)
+            r_cong = results[worst_key]
 
-        # The "static power tax": extra static energy consumed during dilation
-        if r_cong.jobs_dilated > 0:
-            extra_static_j = (r_cong.static_power_kw - r_ideal.static_power_kw) * \
-                             r_cong.simulated_seconds
-            print(f"\n  Static power tax from dilation: {extra_static_j:.0f} J")
-            print(f"  ({r_cong.jobs_dilated} dilated jobs consumed extra static energy")
-            print(f"   while stalled by network congestion)")
+            print(f"\n  --- Power Decomposition (ideal vs {worst_key}) ---")
+            print(f"  {'Component':<25} {'Ideal (kW)':>12} {worst_key+' (kW)':>15}")
+            print(f"  {'-'*52}")
+            print(f"  {'Static (idle leakage)':<25} {r_ideal.static_power_kw:>12.1f} "
+                  f"{r_cong.static_power_kw:>15.1f}")
+            print(f"  {'Dynamic (compute)':<25} {r_ideal.dynamic_power_kw:>12.1f} "
+                  f"{r_cong.dynamic_power_kw:>15.1f}")
+            print(f"  {'Static fraction':<25} {r_ideal.static_power_pct:>11.1f}% "
+                  f"{r_cong.static_power_pct:>14.1f}%")
+
+            # Static power tax
+            if r_cong.jobs_dilated > 0 and r_cong.prediction_errors:
+                extra_runtime_s = sum(
+                    max(0, e['actual_runtime'] - e['original_expected'])
+                    for e in r_cong.prediction_errors if e['dilated']
+                )
+                e_ideal_j = r_ideal.total_energy_joules
+                e_cong_j = r_cong.total_energy_joules
+                energy_overhead_j = e_cong_j - e_ideal_j
+                static_frac = r_cong.static_power_pct / 100.0 if r_cong.static_power_pct > 0 else 0.5
+                static_tax_j = energy_overhead_j * static_frac
+                print(f"\n  Static power tax from dilation ({worst_key}): ~{static_tax_j:.0f} J "
+                      f"({static_frac*100:.0f}% of {energy_overhead_j:.0f} J overhead)")
+                print(f"  ({r_cong.jobs_dilated} dilated jobs, "
+                      f"total extra runtime: {extra_runtime_s:.0f}s)")
 
     return results
 
@@ -1121,12 +1418,17 @@ def plot_uc1_slowdown_cdf(results, save_path):
             ax.step(sorted_sd, cdf, where='post', label=routing.title(),
                     color=color, linewidth=2)
 
-    ax.set_xlabel('Job Slowdown Factor (T_actual / T_ideal)')
+    all_slowdowns = [sd for result in results.values() for sd in result.job_slowdowns]
+    if all_slowdowns and max(all_slowdowns) > 100:
+        ax.set_xscale('log')
+        ax.set_xlabel('Job Slowdown Factor (log scale)')
+    else:
+        ax.set_xlabel('Job Slowdown Factor (T_actual / T_ideal)')
+    ax.set_xlim(left=0.9)
     ax.set_ylabel('CDF')
     ax.set_title('UC1: Job Slowdown CDF - Routing Comparison')
     ax.legend()
     ax.grid(True, alpha=0.3)
-    ax.set_xlim(left=0.9)
     plt.tight_layout()
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
     plt.close()
@@ -1151,7 +1453,7 @@ def plot_uc1_congestion_heatmap(results, save_path):
             colors = plt.cm.hot(np.clip(cong / (max(cong) + 1e-9), 0, 1))
             ax.bar(ts, cong, width=(ts[1]-ts[0]) if len(ts) > 1 else 1,
                    color=colors, edgecolor='none')
-            ax.set_ylabel('Mean Link\nUtilization')
+            ax.set_ylabel('Max Link\nOverload Ratio')
             ax.set_title(f'Routing: {routing.title()}')
             ax.axhline(y=1.0, color='red', linestyle='--', alpha=0.5, label='Congestion threshold')
             ax.legend(loc='upper right', fontsize=8)
@@ -1174,27 +1476,34 @@ def plot_uc2_wait_times(results, save_path):
 
     fig, axes = plt.subplots(1, 3, figsize=(18, 5))
 
+    policies = list(results.keys())
+    n_policies = len(policies)
+
     # (a) Wait time boxplot by policy
     ax = axes[0]
     data = []
     labels = []
-    for policy, result in results.items():
+    for policy in policies:
+        result = results[policy]
         if result.job_wait_times:
             data.append(result.job_wait_times)
             labels.append(policy.upper())
     if data:
-        bp = ax.boxplot(data, labels=labels, patch_artist=True)
-        colors = [POLICY_COLORS.get(p, '#888') for p in results.keys()]
+        bp = ax.boxplot(data, tick_labels=labels, patch_artist=True)
+        colors = [POLICY_COLORS.get(p, '#888') for p in policies]
         for patch, color in zip(bp['boxes'], colors):
             patch.set_facecolor(color)
             patch.set_alpha(0.7)
     ax.set_ylabel('Wait Time (seconds)')
     ax.set_title('(a) Wait Time Distribution')
     ax.grid(True, alpha=0.3)
+    ax.tick_params(axis='x', rotation=30)
 
     # (b) Wait time by job size group (small vs large)
     ax = axes[1]
-    for policy, result in results.items():
+    width = 0.8 / n_policies
+    for i, policy in enumerate(policies):
+        result = results[policy]
         if result.job_wait_times and result.job_sizes:
             median_size = np.median(result.job_sizes)
             small_waits = [w for w, s in zip(result.job_wait_times, result.job_sizes)
@@ -1202,8 +1511,7 @@ def plot_uc2_wait_times(results, save_path):
             large_waits = [w for w, s in zip(result.job_wait_times, result.job_sizes)
                            if s > median_size]
             x = np.arange(2)
-            width = 0.35
-            offset = -width/2 if policy == 'fcfs' else width/2
+            offset = (i - n_policies / 2 + 0.5) * width
             color = POLICY_COLORS.get(policy, '#888')
             vals = [np.mean(small_waits) if small_waits else 0,
                     np.mean(large_waits) if large_waits else 0]
@@ -1212,18 +1520,18 @@ def plot_uc2_wait_times(results, save_path):
     ax.set_xticklabels(['Small Jobs', 'Large Jobs'])
     ax.set_ylabel('Avg Wait Time (seconds)')
     ax.set_title('(b) Wait Time by Job Size')
-    ax.legend()
+    ax.legend(fontsize=8)
     ax.grid(True, alpha=0.3)
 
     # (c) Jobs completed
     ax = axes[2]
-    policies = list(results.keys())
     completed = [results[p].jobs_completed for p in policies]
     colors = [POLICY_COLORS.get(p, '#888') for p in policies]
     ax.bar([p.upper() for p in policies], completed, color=colors, alpha=0.8)
     ax.set_ylabel('Jobs Completed')
     ax.set_title('(c) System Throughput')
     ax.grid(True, alpha=0.3)
+    ax.tick_params(axis='x', rotation=30)
 
     plt.tight_layout()
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
@@ -1319,20 +1627,27 @@ def plot_uc3_placement(results, save_path):
     allocs = list(results.keys())
     colors = [ALLOCATION_COLORS.get(a, '#888') for a in allocs]
 
-    # (a) Slowdown comparison
+    # (a) Dilated jobs (network-congestion-slowed) percentage
     ax = axes[0]
-    slowdowns = [results[a].avg_job_slowdown for a in allocs]
-    ax.bar([a.title() for a in allocs], slowdowns, color=colors, alpha=0.8)
-    ax.set_ylabel('Avg Job Slowdown Factor')
-    ax.set_title('(a) Application Performance')
+    dilated_pcts = [results[a].dilated_pct for a in allocs]
+    ax.bar([a.title() for a in allocs], dilated_pcts, color=colors, alpha=0.8)
+    ax.set_ylabel('Jobs Slowed by Congestion (%)')
+    ax.set_title('(a) Application Performance Impact')
     ax.grid(True, alpha=0.3)
 
-    # (b) Global/Local traffic ratio
+    # (b) Global/Local traffic ratio (or avg hop count for fat-tree topologies)
     ax = axes[1]
     ratios = [results[a].global_local_ratio for a in allocs]
-    ax.bar([a.title() for a in allocs], ratios, color=colors, alpha=0.8)
-    ax.set_ylabel('Global / Local Traffic Ratio')
-    ax.set_title('(b) Traffic Locality')
+    if all(r == 0.0 for r in ratios):
+        # Fallback: fat-tree has no global/local distinction, use hop count instead
+        hops = [results[a].avg_hop_count for a in allocs]
+        ax.bar([a.title() for a in allocs], hops, color=colors, alpha=0.8)
+        ax.set_ylabel('Avg Hop Count')
+        ax.set_title('(b) Traffic Locality (Hop Count)')
+    else:
+        ax.bar([a.title() for a in allocs], ratios, color=colors, alpha=0.8)
+        ax.set_ylabel('Global / Local Traffic Ratio')
+        ax.set_title('(b) Traffic Locality')
     ax.grid(True, alpha=0.3)
 
     # (c) Congestion
@@ -1408,46 +1723,119 @@ def plot_uc4_energy(results, save_path):
     fig, axes = plt.subplots(1, 3, figsize=(18, 5))
 
     configs = list(results.keys())
-    labels = ['Ideal\n(no congestion)', 'With\ncongestion']
+    labels = [c.replace('no_congestion', 'Ideal\n(no net)') for c in configs]
+    # Generate colors dynamically
+    cmap = plt.cm.Set2
+    colors_list = [cmap(i / max(1, len(configs) - 1)) for i in range(len(configs))]
 
     # (a) Total energy
     ax = axes[0]
     energies = [results[c].total_energy_joules / 1e6 for c in configs]  # MJ
-    colors_list = ['#4ECDC4', '#E17055']
-    ax.bar(labels[:len(energies)], energies, color=colors_list[:len(energies)], alpha=0.8)
+    ax.bar(labels, energies, color=colors_list, alpha=0.8)
     ax.set_ylabel('Total Energy (MJ)')
     ax.set_title('(a) Energy-to-Solution')
     ax.grid(True, alpha=0.3)
+    ax.tick_params(axis='x', rotation=30)
 
-    # (b) Power profile (if available)
+    # (b) Jobs slowed by network congestion per routing config
     ax = axes[1]
-    for i, (config, label) in enumerate(zip(configs, labels)):
-        if results[config].power_history:
-            ax.plot(results[config].power_history, label=label.replace('\n', ' '),
-                    color=colors_list[i], alpha=0.7, linewidth=1)
-    ax.set_xlabel('Tick')
-    ax.set_ylabel('Power (kW)')
-    ax.set_title('(b) Power Profile')
-    ax.legend()
+    dilated_vals = [results[c].dilated_pct for c in configs]
+    ax.bar(labels, dilated_vals, color=colors_list, alpha=0.8)
+    ax.set_ylabel('Jobs Slowed by Network (%)')
+    ax.set_title('(b) Network Congestion Impact')
     ax.grid(True, alpha=0.3)
+    ax.tick_params(axis='x', rotation=30)
 
     # (c) Static vs Dynamic power decomposition (stacked bar)
     ax = axes[2]
-    x = np.arange(len(configs))
     static_vals = [results[c].static_power_kw for c in configs]
     dynamic_vals = [results[c].dynamic_power_kw for c in configs]
-    ax.bar(labels[:len(configs)], static_vals, color='#95a5a6', alpha=0.8, label='Static (idle)')
-    ax.bar(labels[:len(configs)], dynamic_vals, bottom=static_vals,
+    ax.bar(labels, static_vals, color='#95a5a6', alpha=0.8, label='Static (idle)')
+    ax.bar(labels, dynamic_vals, bottom=static_vals,
            color='#e67e22', alpha=0.8, label='Dynamic (compute)')
     ax.set_ylabel('Power (kW)')
     ax.set_title('(c) Power Decomposition')
-    ax.legend()
+    ax.legend(fontsize=8)
     ax.grid(True, alpha=0.3)
+    ax.tick_params(axis='x', rotation=30)
 
     plt.tight_layout()
     plt.savefig(save_path, dpi=300, bbox_inches='tight')
     plt.close()
     print(f"  Saved: {save_path}")
+
+
+# ==========================================
+# CSV-based plot regeneration
+# ==========================================
+
+def _load_uc_results_from_csv(csv_path, key_col):
+    """Load UCResult objects from a saved CSV. Only aggregate fields are populated."""
+    import pandas as pd
+    df = pd.read_csv(csv_path)
+    results = {}
+    for _, row in df.iterrows():
+        key = row[key_col]
+        r = SimResult(
+            label=str(row.get('label', key)),
+            system=str(row.get('system', '')),
+            routing=str(row.get('routing', 'default')),
+            allocation=str(row.get('allocation', 'contiguous')),
+            policy=str(row.get('policy', 'fcfs')),
+            num_jobs=int(row.get('num_jobs', 0)),
+            simulated_seconds=float(row.get('simulated_seconds', 0)),
+            wall_time=float(row.get('wall_time', 1)),
+            speedup=float(row.get('speedup', 1)),
+            ticks=int(row.get('ticks', 0)),
+            avg_network_util=float(row.get('avg_network_util', 0)),
+            avg_job_slowdown=float(row.get('avg_job_slowdown', 1)),
+            max_job_slowdown=float(row.get('max_job_slowdown', 1)),
+            avg_congestion=float(row.get('avg_congestion', 0)),
+            max_congestion=float(row.get('max_congestion', 0)),
+            global_throughput_bps=float(row.get('global_throughput_bps', 0)),
+            jobs_completed=int(row.get('jobs_completed', 0)),
+            jobs_dilated=int(row.get('jobs_dilated', 0)),
+            dilated_pct=float(row.get('dilated_pct', 0)),
+            avg_wait_time=float(row.get('avg_wait_time', 0)),
+            max_wait_time=float(row.get('max_wait_time', 0)),
+            potential_bullies=int(row.get('potential_bullies', 0)),
+            total_energy_joules=float(row.get('total_energy_joules', 0)),
+            avg_power_watts=float(row.get('avg_power_watts', 0)),
+            peak_power_watts=float(row.get('peak_power_watts', 0)),
+            idle_energy_pct=float(row.get('idle_energy_pct', 0)),
+            static_power_kw=float(row.get('static_power_kw', 0)),
+            dynamic_power_kw=float(row.get('dynamic_power_kw', 0)),
+            static_power_pct=float(row.get('static_power_pct', 0)),
+            avg_hop_count=float(row.get('avg_hop_count', 0)),
+            global_local_ratio=float(row.get('global_local_ratio', 0)),
+            global_traffic_pairs=int(row.get('global_traffic_pairs', 0)),
+            local_traffic_pairs=int(row.get('local_traffic_pairs', 0)),
+        )
+        results[key] = r
+    return results
+
+
+def regenerate_plots_from_csv(output_dir, figures_dir, uc_to_run):
+    """Regenerate UC plots that only need aggregate CSV data (no per-job lists)."""
+    figures_dir.mkdir(parents=True, exist_ok=True)
+    if 3 in uc_to_run:
+        csv3 = output_dir / "uc3_placement_results.csv"
+        if csv3.exists():
+            results = _load_uc_results_from_csv(csv3, 'allocation')
+            plot_uc3_placement(results, figures_dir / "uc3_placement.png")
+            print(f"  [CSV] Regenerated uc3_placement.png")
+        else:
+            print(f"  [SKIP] {csv3} not found")
+    if 4 in uc_to_run:
+        csv4 = output_dir / "uc4_energy_results.csv"
+        if csv4.exists():
+            # Key by label with UC4_ prefix stripped
+            results_raw = _load_uc_results_from_csv(csv4, 'label')
+            results = {k.replace('UC4_', '', 1): v for k, v in results_raw.items()}
+            plot_uc4_energy(results, figures_dir / "uc4_energy.png")
+            print(f"  [CSV] Regenerated uc4_energy.png")
+        else:
+            print(f"  [SKIP] {csv4} not found")
 
 
 # ==========================================
@@ -1458,45 +1846,91 @@ def main():
     parser = argparse.ArgumentParser(
         description='RAPS Use Case Evaluation (4 operational scenarios)')
     parser.add_argument('--system', default='lassen', choices=['lassen', 'frontier'],
-                        help='System to simulate')
-    parser.add_argument('--duration', type=int, default=30,
-                        help='Simulation duration in minutes (default: 30)')
+                        help='System to simulate (default: lassen)')
+    parser.add_argument('--duration', type=int, default=60,
+                        help='Simulation duration in minutes (default: 60)')
     parser.add_argument('--delta-t', type=int, default=1,
                         help='Time step in seconds (default: 1)')
-    parser.add_argument('--num-jobs', type=int, default=30,
-                        help='Number of jobs (default: 30)')
+    parser.add_argument('--num-jobs', type=int, default=300,
+                        help='Number of jobs (default: 300)')
+    parser.add_argument('--nodes', type=int, default=None,
+                        help='Override system node count (e.g. 10000)')
     parser.add_argument('--uc', type=int, nargs='+', default=None,
                         help='Specific use cases to run (1-4, default: all)')
     parser.add_argument('--quick', action='store_true',
                         help='Quick mode: 5 min, 10 jobs')
+    parser.add_argument('--arrival-rate', type=float, default=None,
+                        help='Mean seconds between job arrivals (default: auto-scale to fill ~80%% of simulation)')
     parser.add_argument('--output-dir', type=str, default=None,
                         help='Output directory')
     parser.add_argument('--no-plots', action='store_true',
                         help='Skip generating plots')
+    parser.add_argument('--plot-from-csv', action='store_true',
+                        help='Regenerate UC3/UC4 plots from existing CSVs (no simulation)')
+    parser.add_argument('--force', action='store_true',
+                        help='Force re-run even if result CSVs already exist')
 
     args = parser.parse_args()
+
+    # Output directory - include system and node count in path
+    if args.output_dir:
+        output_dir = Path(args.output_dir)
+    else:
+        suffix = f"{args.system}"
+        if args.nodes:
+            suffix += f"_n{args.nodes}"
+        output_dir = PROJECT_ROOT / "output" / "use_cases" / suffix
+    figures_dir = output_dir / "figures"
+
+    # --plot-from-csv: skip simulation, regenerate UC3/UC4 plots from existing CSVs
+    if args.plot_from_csv:
+        uc_to_run = set(args.uc) if args.uc else {3, 4}
+        print(f"[plot-from-csv] Regenerating plots for UCs {sorted(uc_to_run)} in {output_dir}")
+        regenerate_plots_from_csv(output_dir, figures_dir, uc_to_run)
+        return
 
     # Quick mode overrides
     if args.quick:
         args.duration = 5
         args.num_jobs = 10
 
-    # Output directory
-    output_dir = Path(args.output_dir) if args.output_dir else OUTPUT_DIR
-    figures_dir = output_dir / "figures"
+    sim_seconds = args.duration * 60
+
+    if args.arrival_rate is not None:
+        mean_inter_arrival = args.arrival_rate
+    else:
+        mean_inter_arrival = sim_seconds * 0.8 / args.num_jobs
+        mean_inter_arrival = max(2.0, mean_inter_arrival)
+    print(f"[Config] Arrival rate: {mean_inter_arrival:.1f}s "
+          f"({args.num_jobs} jobs over {args.duration} min, "
+          f"~{int(sim_seconds * 0.8 / mean_inter_arrival)} arrive within window)")
+
     output_dir.mkdir(parents=True, exist_ok=True)
     figures_dir.mkdir(parents=True, exist_ok=True)
 
     # Which use cases to run
     uc_to_run = set(args.uc) if args.uc else {1, 2, 3, 4}
 
+    # Scale workload for larger systems
+    node_count = args.nodes
+    if node_count and node_count >= 1000:
+        # Scale max job size proportionally (~2.5% of system)
+        max_job_nodes = min(node_count // 4, 4096)
+        min_job_nodes = max(8, node_count // 500)
+    else:
+        max_job_nodes = 256
+        min_job_nodes = 8
+
     print("=" * 60)
     print("RAPS Use Case Evaluation")
     print("=" * 60)
     print(f"System:    {args.system}")
+    if node_count:
+        print(f"Nodes:     {node_count}")
     print(f"Duration:  {args.duration} min")
     print(f"Delta-t:   {args.delta_t}s")
     print(f"Jobs:      {args.num_jobs}")
+    print(f"Job sizes: {min_job_nodes} - {max_job_nodes} nodes")
     print(f"Use cases: {sorted(uc_to_run)}")
     print(f"Output:    {output_dir}")
 
@@ -1504,8 +1938,9 @@ def main():
     print("\n[Setup] Generating workload...")
     jobs = generate_workload(
         num_jobs=args.num_jobs,
-        min_nodes=8,
-        max_nodes=256,
+        min_nodes=min_job_nodes,
+        max_nodes=max_job_nodes,
+        mean_inter_arrival=mean_inter_arrival,
     )
     print(f"  Generated {len(jobs)} jobs")
     sizes = [j.nodes_required for j in jobs]
@@ -1513,81 +1948,110 @@ def main():
           f"median={int(np.median(sizes))}")
     print(f"  Arrivals: {jobs[0].submit_time}s to {jobs[-1].submit_time}s")
 
+    # Common kwargs for all UC functions
+    uc_kwargs = dict(
+        node_count=node_count,
+        delta_t=args.delta_t,
+    )
+
     all_results = {}
 
-    # UC1: Adaptive Routing
+    # Helper: check if a UC result CSV already exists with expected variants
+    def _uc_complete(csv_name, expected_variants):
+        """Return True if the CSV exists and has rows for all expected variants."""
+        if args.force:
+            return False
+        csv_path = output_dir / csv_name
+        if not csv_path.exists():
+            return False
+        try:
+            df = pd.read_csv(csv_path)
+            return len(df) >= expected_variants
+        except Exception:
+            return False
+
+    # UC1: Routing (3 variants per topology: minimal/ugal/valiant or minimal/ecmp/adaptive)
+    num_routing_algos = len(_all_routing_algos_for_system(args.system))
+    uc1_csv = "uc1_routing_results.csv"
     if 1 in uc_to_run:
-        results = run_uc1_routing(
-            jobs, args.system, args.duration)
-        all_results['uc1'] = results
+        if _uc_complete(uc1_csv, num_routing_algos):
+            print(f"\n[SKIP] UC1 already complete ({uc1_csv} has {num_routing_algos} variants)")
+        else:
+            uc1_path = output_dir / uc1_csv
+            resume_path = None if args.force else uc1_path
+            done = _load_done_labels(resume_path)
+            if done:
+                print(f"\n[RESUME] UC1: {len(done)} variant(s) already done, resuming...")
+            results = run_uc1_routing(
+                jobs, args.system, args.duration,
+                resume_csv=uc1_path, done_labels=done, **uc_kwargs)
+            all_results['uc1'] = results
 
-        if results and not args.no_plots:
-            plot_uc1_slowdown_cdf(results, figures_dir / "uc1_slowdown_cdf.png")
-            plot_uc1_congestion_heatmap(results, figures_dir / "uc1_congestion_heatmap.png")
+            if results and not args.no_plots:
+                plot_uc1_slowdown_cdf(results, figures_dir / "uc1_slowdown_cdf.png")
+                plot_uc1_congestion_heatmap(results, figures_dir / "uc1_congestion_heatmap.png")
 
-        # Save CSV
-        rows = []
-        for routing, r in results.items():
-            rows.append({k: v for k, v in asdict(r).items()
-                        if not isinstance(v, list)})
-        if rows:
-            pd.DataFrame(rows).to_csv(
-                output_dir / "uc1_routing_results.csv", index=False)
-
-    # UC2: Scheduling
+    # UC2: Scheduling (3 variants: fcfs, fcfs+firstfit, sjf)
+    uc2_csv = "uc2_scheduling_results.csv"
     if 2 in uc_to_run:
-        results = run_uc2_scheduling(
-            jobs, args.system, args.duration)
-        all_results['uc2'] = results
+        if _uc_complete(uc2_csv, 3):
+            print(f"\n[SKIP] UC2 already complete ({uc2_csv} has 3 variants)")
+        else:
+            uc2_path = output_dir / uc2_csv
+            resume_path = None if args.force else uc2_path
+            done = _load_done_labels(resume_path)
+            if done:
+                print(f"\n[RESUME] UC2: {len(done)} variant(s) already done, resuming...")
+            results = run_uc2_scheduling(
+                jobs, args.system, args.duration,
+                resume_csv=uc2_path, done_labels=done, **uc_kwargs)
+            all_results['uc2'] = results
 
-        if results and not args.no_plots:
-            plot_uc2_wait_times(results, figures_dir / "uc2_wait_times.png")
-            plot_uc2_utilization_stacked(results, figures_dir / "uc2_utilization_stacked.png")
-            plot_uc2_prediction_error(results, figures_dir / "uc2_prediction_error.png")
+            if results and not args.no_plots:
+                plot_uc2_wait_times(results, figures_dir / "uc2_wait_times.png")
+                plot_uc2_utilization_stacked(results, figures_dir / "uc2_utilization_stacked.png")
+                plot_uc2_prediction_error(results, figures_dir / "uc2_prediction_error.png")
 
-        rows = []
-        for policy, r in results.items():
-            rows.append({k: v for k, v in asdict(r).items()
-                        if not isinstance(v, list)})
-        if rows:
-            pd.DataFrame(rows).to_csv(
-                output_dir / "uc2_scheduling_results.csv", index=False)
-
-    # UC3: Node Placement
+    # UC3: Node Placement (3 variants: contiguous, random, hybrid)
+    uc3_csv = "uc3_placement_results.csv"
     if 3 in uc_to_run:
-        results = run_uc3_placement(
-            jobs, args.system, args.duration)
-        all_results['uc3'] = results
+        if _uc_complete(uc3_csv, 3):
+            print(f"\n[SKIP] UC3 already complete ({uc3_csv} has 3 variants)")
+        else:
+            uc3_path = output_dir / uc3_csv
+            resume_path = None if args.force else uc3_path
+            done = _load_done_labels(resume_path)
+            if done:
+                print(f"\n[RESUME] UC3: {len(done)} variant(s) already done, resuming...")
+            results = run_uc3_placement(
+                jobs, args.system, args.duration,
+                resume_csv=uc3_path, done_labels=done, **uc_kwargs)
+            all_results['uc3'] = results
 
-        if results and not args.no_plots:
-            plot_uc3_placement(results, figures_dir / "uc3_placement.png")
-            plot_uc3_hop_count(results, figures_dir / "uc3_hop_count.png")
-            plot_uc3_speedup_vs_comm(results, figures_dir / "uc3_speedup_vs_comm.png")
+            if results and not args.no_plots:
+                plot_uc3_placement(results, figures_dir / "uc3_placement.png")
+                plot_uc3_hop_count(results, figures_dir / "uc3_hop_count.png")
+                plot_uc3_speedup_vs_comm(results, figures_dir / "uc3_speedup_vs_comm.png")
 
-        rows = []
-        for alloc, r in results.items():
-            rows.append({k: v for k, v in asdict(r).items()
-                        if not isinstance(v, list)})
-        if rows:
-            pd.DataFrame(rows).to_csv(
-                output_dir / "uc3_placement_results.csv", index=False)
-
-    # UC4: Energy Cost
+    # UC4: Energy Cost (1 + num_routing_algos variants: no_congestion + each routing)
+    num_uc4_variants = 1 + num_routing_algos
+    uc4_csv = "uc4_energy_results.csv"
     if 4 in uc_to_run:
-        results = run_uc4_energy(
-            jobs, args.system, args.duration)
-        all_results['uc4'] = results
+        if _uc_complete(uc4_csv, num_uc4_variants):
+            print(f"\n[SKIP] UC4 already complete ({uc4_csv} has {num_uc4_variants} variants)")
+        else:
+            uc4_path = output_dir / uc4_csv
+            resume_path = None if args.force else uc4_path
+            done = _load_done_labels(resume_path)
+            if done:
+                print(f"\n[RESUME] UC4: {len(done)} variant(s) already done, resuming...")
+            results = run_uc4_energy(
+                jobs, args.system, args.duration,
+                resume_csv=uc4_path, done_labels=done, **uc_kwargs)
+            all_results['uc4'] = results
 
-        if results and not args.no_plots:
-            plot_uc4_energy(results, figures_dir / "uc4_energy.png")
-
-        rows = []
-        for config, r in results.items():
-            rows.append({k: v for k, v in asdict(r).items()
-                        if not isinstance(v, list)})
-        if rows:
-            pd.DataFrame(rows).to_csv(
-                output_dir / "uc4_energy_results.csv", index=False)
+            if results and not args.no_plots:
+                plot_uc4_energy(results, figures_dir / "uc4_energy.png")
 
     # Final summary
     print("\n" + "=" * 60)

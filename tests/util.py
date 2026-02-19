@@ -46,7 +46,7 @@ def run_engine(sim_config, include_ticks=False) -> tuple[Engine, dict[str, Any]]
     can be very large, especially if cooling is enabled!)
     """
     # Log command to rerun the test manually for debugging convenience
-    print(f"Command to reproduce run:\n    {_get_cmd(sim_config, "run")}")
+    print(f"Command to reproduce run:\n    {_get_cmd(sim_config, 'run')}")
 
     sim_config = SingleSimConfig.model_validate(sim_config)
     engine = Engine(sim_config)
@@ -74,7 +74,7 @@ def run_multi_part_engine(sim_config, include_ticks=False) -> tuple[MultiPartEng
     TickDatas (this can be very large, especially if cooling is enabled!)
     """
     # Log command to rerun the test manually for debugging convenience
-    print(f"Command to reproduce run:\n    {_get_cmd(sim_config, "run-parts")}")
+    print(f"Command to reproduce run:\n    {_get_cmd(sim_config, 'run-parts')}")
 
     sim_config = MultiPartSimConfig.model_validate(sim_config)
     multi_engine = MultiPartEngine(sim_config)

@@ -90,3 +90,6 @@ network:
   dragonfly_a: 48  # Global links per router (49 groups total)
   dragonfly_p: 4   # Compute nodes per router
   latency: 1
+  # Cassini stall/flit model parameters (from counter data: 25 GB/s / 215M pkts/s ≈ 116 B)
+  mean_packet_size_bytes: 116
+  flit_size_bytes: 64            # Slingshot Rosetta flit unit

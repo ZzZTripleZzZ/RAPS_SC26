@@ -56,6 +56,10 @@ class TickReturn:
     avg_net_tx: Optional[float]
     avg_net_rx: Optional[float]
     avg_net_util: Optional[float]
+    avg_stall_ratio: Optional[float]
+    max_stall_ratio: Optional[float]
+    total_posted_pkts: Optional[float]
+    total_tx_paused: Optional[float]
     slowdown_per_job: float
     node_occupancy: dict[int, int]
 
@@ -80,6 +84,10 @@ class TickData:
     avg_net_tx: Optional[float]
     avg_net_rx: Optional[float]
     avg_net_util: Optional[float]
+    avg_stall_ratio: Optional[float]
+    max_stall_ratio: Optional[float]
+    total_posted_pkts: Optional[float]
+    total_tx_paused: Optional[float]
     slowdown_per_job: Optional[float]
     node_occupancy: Optional[dict[int, int]]
     time_delta: int
@@ -302,8 +310,12 @@ class Engine:
         self.avg_net_rx = []
         self.net_util_history = []
         self.net_congestion_history = []
+        self.stall_ratio_history = []
         self._congestion_interval = 10  # compute inter-job congestion every N ticks
         self._last_congestion = 0.0
+        # If set (via RAPS_DUMP_LINKS_DIR env var), dump global_link_loads CSV each
+        # congestion-interval tick for chord-diagram visualization.
+        self._dump_links_dir = os.environ.get('RAPS_DUMP_LINKS_DIR', '')
         self.avg_slowdown_history = []
         self.max_slowdown_history = []
         self.node_occupancy_history = []
@@ -393,7 +405,7 @@ class Engine:
         else:
             return False
 
-    def prepare_timestep(self, *, replay: bool = True, jobs):
+    def prepare_timestep(self, *, replay: bool = False, jobs):
         # 0 track need to reschedule
         # 1 identify completed jobs
         # 2 Check continuous job generation
@@ -427,9 +439,15 @@ class Engine:
                 self.network_model.clear_job_cache(job)
 
         if not replay:
+            # Use current_timestep - start_time directly (not job.current_run_time)
+            # because current_run_time is updated in complete_timestep and lags by
+            # one tick relative to the current_timestep seen by tick().  Using the
+            # stale value means a job whose time_limit falls between two integer
+            # ticks is never killed in prepare_timestep and instead triggers the
+            # hard exception in tick().
             killed_jobs = [job for job in self.running if
                            job.end_time is not None
-                           and job.start_time + job.time_limit <= job.current_run_time]
+                           and job.time_limit <= self.current_timestep - job.start_time]
         else:
             killed_jobs = []
 
@@ -567,6 +585,7 @@ class Engine:
         net_rx_list = []
 
         slowdown_factors = []
+        stall_ratios = []
 
         for job in self.running:
 
@@ -633,6 +652,7 @@ class Engine:
                                                      net_rx=net_rx,
                                                      debug=self.debug)
                 slowdown_factors.append(slowdown_factor)
+                stall_ratios.append(getattr(job, 'stall_ratio', 0.0))
 
         # All required values for each jobs have been an collected.
         # Continue with calculations for the whole system:
@@ -676,7 +696,46 @@ class Engine:
                 else:
                     self._last_congestion = congestion_stats
             self.net_congestion_history.append((self.current_timestep, self._last_congestion))
+
+        # Propagate inter-job congestion to per-job slowdowns.
+        # Per-job STENCIL_3D traffic alone rarely saturates a link (per-job util << 1.0).
+        # The aggregate inter-job load is the correct measure of how congested the
+        # shared network is. Use an M/D/1 queuing model: at utilisation ρ the mean
+        # waiting time multiplier is  1 + ρ²/(2(1-ρ)), so jobs experience a slowdown
+        # that grows with congestion even below 100 % saturation.
+        # Only apply when ρ < 1.0: when aggregate congestion ≥ 1.0 (e.g. fat-tree
+        # minimal routing), the per-job path (worst_link_util > 1 → apply_job_slowdown)
+        # already dilated the job.  Clamping ρ = min(3.55, 0.99) would give a
+        # catastrophic 50× slowdown for already-handled cases.
+        if 0.05 < self._last_congestion < 1.0 and net_utils:
+            rho = self._last_congestion
+            inter_job_slowdown = 1.0 + rho ** 2 / (2.0 * (1.0 - rho))
+            for i, job in enumerate(self.running):
+                if i < len(net_utils) and net_utils[i] > 0:
+                    apply_job_slowdown(
+                        job=job,
+                        max_throughput=1.0,   # unused when net_cong > 1
+                        net_util=net_utils[i],
+                        net_cong=inter_job_slowdown,
+                        net_tx=net_tx_list[i] if i < len(net_tx_list) else 0.0,
+                        net_rx=net_rx_list[i] if i < len(net_rx_list) else 0.0,
+                        debug=self.debug,
+                    )
         # ---
+
+        # --- Optional link-load snapshot for chord-diagram visualization ---
+        # Enable by setting RAPS_DUMP_LINKS_DIR=/path/to/dir before running raps.
+        # See scripts/plot_dragonfly_congestion.py for visualization.
+        if (self._dump_links_dir and self.simulate_network
+                and self.network_model and self.running):
+            tick_num = self.current_timestep - self.timestep_start
+            if tick_num % self._congestion_interval == 0:
+                os.makedirs(self._dump_links_dir, exist_ok=True)
+                fname = os.path.join(
+                    self._dump_links_dir,
+                    f"links_{self.current_timestep:06.0f}.csv",
+                )
+                self.network_model.dump_link_loads(fname, dt=time_delta)
 
         # System Power
         if self.power_manager:  # Power is always simulated
@@ -717,12 +776,34 @@ class Engine:
                                                                    slowdown_factors=slowdown_factors
                                                                    )
             slowdown_per_job = sum(slowdown_factors) / len(slowdown_factors) if len(slowdown_factors) != 0 else 0
+            avg_stall_ratio = sum(stall_ratios) / len(stall_ratios) if stall_ratios else 0.0
+            max_stall_ratio = max(stall_ratios) if stall_ratios else 0.0
+
+            # Per-link posted_pkts / tx_paused using accumulated global link loads
+            mean_pkt_size = self.config.get('MEAN_PACKET_SIZE_BYTES', 116)
+            if hasattr(self.network_model, 'compute_tick_stall_stats') and self.network_model.global_link_loads:
+                tick_stall = self.network_model.compute_tick_stall_stats(
+                    mean_pkt_size_bytes=mean_pkt_size,
+                    dt=time_delta,
+                    avg_slowdown=slowdown_per_job,
+                )
+                total_posted_pkts = tick_stall['total_posted_pkts']
+                total_tx_paused = tick_stall['total_tx_paused']
+            else:
+                total_posted_pkts = None
+                total_tx_paused = None
+
             self.record_network_stats(avg_tx=avg_tx,
                                       avg_rx=avg_rx,
-                                      avg_net=avg_net)
+                                      avg_net=avg_net,
+                                      avg_stall_ratio=avg_stall_ratio)
         else:
             avg_tx, avg_rx, avg_net = None, None, None
             slowdown_per_job = 0
+            avg_stall_ratio = None
+            max_stall_ratio = None
+            total_posted_pkts = None
+            total_tx_paused = None
 
         # Continue with System Simulation
 
@@ -745,6 +826,10 @@ class Engine:
             avg_net_tx=avg_tx,
             avg_net_rx=avg_rx,
             avg_net_util=avg_net,
+            avg_stall_ratio=avg_stall_ratio,
+            max_stall_ratio=max_stall_ratio,
+            total_posted_pkts=total_posted_pkts,
+            total_tx_paused=total_tx_paused,
             slowdown_per_job=slowdown_per_job,
             node_occupancy=node_occupancy,
         )
@@ -994,6 +1079,8 @@ class Engine:
             power_df=None, p_flops=0, g_flops_w=0,
             system_util=0, fmu_inputs=None, fmu_outputs=None,
             avg_net_rx=0, avg_net_tx=0, avg_net_util=0,
+            avg_stall_ratio=None, max_stall_ratio=None,
+            total_posted_pkts=None, total_tx_paused=None,
             slowdown_per_job=0.0, node_occupancy={},
         )
 
@@ -1019,7 +1106,7 @@ class Engine:
                     cursor = r
 
             # 1. Prepare Timestep:
-            completed_jobs, killed_jobs, need_reschedule = self.prepare_timestep(jobs=jobs)
+            completed_jobs, killed_jobs, need_reschedule = self.prepare_timestep(jobs=jobs, replay=replay)
 
             # 2. Identify eligible jobs and add them to the queue.
             has_new_additions = self.add_eligible_jobs_to_queue(jobs)
@@ -1060,6 +1147,10 @@ class Engine:
                 avg_net_rx=tick_return.avg_net_rx,
                 avg_net_tx=tick_return.avg_net_tx,
                 avg_net_util=tick_return.avg_net_util,
+                avg_stall_ratio=tick_return.avg_stall_ratio,
+                max_stall_ratio=tick_return.max_stall_ratio,
+                total_posted_pkts=tick_return.total_posted_pkts,
+                total_tx_paused=tick_return.total_tx_paused,
                 slowdown_per_job=tick_return.slowdown_per_job,
                 node_occupancy=tick_return.node_occupancy,
                 time_delta=current_time_delta
@@ -1091,11 +1182,13 @@ class Engine:
     def record_network_stats(self, *,
                              avg_tx,
                              avg_rx,
-                             avg_net
+                             avg_net,
+                             avg_stall_ratio=None,
                              ):
         self.avg_net_tx.append(avg_tx)
         self.avg_net_rx.append(avg_rx)
         self.net_util_history.append(avg_net)
+        self.stall_ratio_history.append((self.current_timestep, avg_stall_ratio))
 
     def record_power_stats(self, *, time_delta, total_power_kw, total_loss_kw, jobs_power):
         if (time_delta == 1 and self.current_timestep % self.config['POWER_UPDATE_FREQ'] == 0) or time_delta != 1:

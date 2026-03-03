@@ -329,11 +329,14 @@ class Job:
         self.gpu_trace = dilate_trace(self.gpu_trace, factor)
         self.ntx_trace = dilate_trace(self.ntx_trace, factor)
         self.nrx_trace = dilate_trace(self.nrx_trace, factor)
+        if self.expected_run_time is not None:
+            self.expected_run_time = int(np.round(self.expected_run_time * factor))
         if self.end_time is not None:
-            expected_run_time = self.end_time - self.start_time
-            expected_run_time = int(np.round(expected_run_time * factor))
             assert self.start_time is not None
-            self.end_time = self.start_time + expected_run_time
+            self.end_time = self.start_time + (
+                self.expected_run_time if self.expected_run_time is not None
+                else int(np.round((self.end_time - self.start_time) * factor))
+            )
 
 
 class JobStatistics:
@@ -405,6 +408,8 @@ class JobStatistics:
             self.avg_node_power = sum(job.power_history) / len(job.power_history) / self.num_nodes
             self.max_node_power = max(job.power_history) / self.num_nodes
         self.energy = self.run_time * self.avg_node_power * self.num_nodes
+        self.slowdown_factor = getattr(job, 'slowdown_factor', 1.0)
+        self.stall_ratio = getattr(job, 'stall_ratio', 0.0)
 
 
 if __name__ == "__main__":

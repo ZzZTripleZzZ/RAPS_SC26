@@ -287,20 +287,17 @@ def load_and_scale_lassen_jobs(node_count, sys_config, sim_hours, repeat_idx):
     
     print(f"  Loaded {len(original_jobs)} jobs from lassen telemetry ({lassen_data_path})", flush=True)
     
-    # Scale jobs if needed
-    if node_count > 4626:  # Lassen's actual node count
-        print(f"  Scaling jobs to fill {node_count} nodes...", flush=True)
-        scaled_jobs = replicate_jobs_for_scale(
-            original_jobs, 
-            target_nodes=node_count,
-            sim_duration_sec=sim_hours * 3600,
-            seed=42 + repeat_idx
-        )
-        print(f"  Scaled to {len(scaled_jobs)} jobs", flush=True)
-    else:
-        # Filter to fit in node count
-        scaled_jobs = [j for j in original_jobs if j.nodes_required <= node_count]
-        print(f"  Filtered to {len(scaled_jobs)} jobs (nodes <= {node_count})", flush=True)
+    # Always use replicate_jobs_for_scale to ensure adequate job count.
+    # A simple node-count filter leaves almost no jobs for small node_count
+    # (e.g., n=100/1000 vs Lassen's 4626-node jobs).
+    print(f"  Scaling jobs to fill {node_count} nodes...", flush=True)
+    scaled_jobs = replicate_jobs_for_scale(
+        original_jobs,
+        target_nodes=node_count,
+        sim_duration_sec=sim_hours * 3600,
+        seed=42 + repeat_idx
+    )
+    print(f"  Scaled to {len(scaled_jobs)} jobs", flush=True)
     
     return scaled_jobs
 
@@ -750,6 +747,11 @@ def main():
             print(f"  Progress: {ok_count+fail_count}/{len(tasks)} done, "
                   f"{ok_count} OK, {fail_count} failed, "
                   f"elapsed {elapsed/60:.1f}min\n", flush=True)
+            # If the experiment was interrupted (checkpoint saved), exit now so
+            # the SLURM shell handler can resubmit.  Remaining tasks will be
+            # picked up automatically on the next job via resume logic.
+            if result["status"] == "INTERRUPTED":
+                sys.exit(99)
     else:
         ctx = mp.get_context("spawn")
         with ctx.Pool(processes=workers) as pool:

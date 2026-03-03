@@ -57,6 +57,9 @@ class _LazySrcPaths:
 from .base import (
     all_to_all_paths,
     apply_job_slowdown,
+    compute_link_stall_packet_stats,
+    aggregate_link_stall_stats,
+    compute_stall_ratio,
     compute_all_to_all_coefficients,
     compute_stencil_3d_coefficients,
     compute_system_network_stats,
@@ -86,6 +89,9 @@ from raps.utils import get_current_utilization
 __all__ = [
     "NetworkModel",
     "apply_job_slowdown",
+    "compute_link_stall_packet_stats",
+    "aggregate_link_stall_stats",
+    "compute_stall_ratio",
     "compute_system_network_stats",
     "network_congestion",
     "network_utilization",
@@ -324,7 +330,7 @@ class NetworkModel:
                 max_load = 0.0
                 for coeff in coeffs.values():
                     load = coeff * effective_tx
-                    byte_util = (load * 8) / max_throughput
+                    byte_util = load / max_throughput
                     if byte_util > max_load:
                         max_load = byte_util
                 net_cong = max_load
@@ -423,6 +429,56 @@ class NetworkModel:
             raise ValueError(f"Unsupported topology: {self.topology}")
 
         return net_util, net_cong, net_tx, net_rx, max_throughput
+
+    def compute_tick_stall_stats(self, *, mean_pkt_size_bytes, dt, avg_slowdown=1.0):
+        """
+        Compute system-level stall/packet stats for the current tick using
+        accumulated global_link_loads.
+
+        Args:
+            mean_pkt_size_bytes: Mean packet size in bytes (from config)
+            dt: Tick duration in seconds
+            avg_slowdown: System-average slowdown factor for the tick
+
+        Returns:
+            dict with 'total_posted_pkts', 'total_tx_paused', 'system_stall_ratio'
+        """
+        if not self.global_link_loads:
+            return {'total_posted_pkts': 0.0, 'total_tx_paused': 0.0, 'system_stall_ratio': 0.0}
+        link_stats = compute_link_stall_packet_stats(
+            self.global_link_loads,
+            self.max_link_bw * 8,      # convert bytes/s → bits/s
+            mean_pkt_size_bytes,
+            dt,
+            avg_slowdown,
+        )
+        return aggregate_link_stall_stats(link_stats)
+
+    def dump_link_loads(self, path: str, *, dt: float | None = None) -> None:
+        """Write current global_link_loads to a CSV file (src, dst, bytes).
+
+        The resulting CSV can be fed directly to
+        ``scripts/plot_dragonfly_congestion.py``.
+
+        Parameters
+        ----------
+        path : str | Path
+            Destination CSV file path.
+        dt   : float, optional
+            Simulation timestep (seconds).  If supplied it is written to a
+            header comment so the plot script can auto-detect it.
+        """
+        import csv as _csv
+        from pathlib import Path as _Path
+        _Path(path).parent.mkdir(parents=True, exist_ok=True)
+        with open(path, 'w', newline='') as f:
+            if dt is not None:
+                f.write(f"# dt={dt}\n")
+            writer = _csv.writer(f)
+            writer.writerow(['src', 'dst', 'bytes'])
+            for (u, v), b in self.global_link_loads.items():
+                if b > 0:
+                    writer.writerow([u, v, f'{b:.0f}'])
 
     def reset_link_loads(self):
         """Reset global link loads at the start of each simulation tick."""

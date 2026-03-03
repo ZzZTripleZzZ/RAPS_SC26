@@ -533,13 +533,16 @@ def link_loads_for_job_dragonfly_adaptive(
     if len(job_hosts) < 2:
         return job_loads
 
-    # All-to-all traffic: each host sends to every other host
-    per_peer = tx_volume_bytes / (len(job_hosts) - 1)
+    # All-to-all traffic: each host sends to every other host.
+    # Iterate unordered pairs (i < j) to match compute_all_to_all_coefficients
+    # and avoid double-counting each undirected edge (ordered pairs give 2× load).
+    n = len(job_hosts)
+    per_peer = tx_volume_bytes / (n - 1)
 
-    for src in job_hosts:
-        for dst in job_hosts:
-            if src == dst:
-                continue
+    for i in range(n):
+        for j in range(i + 1, n):
+            src = job_hosts[i]
+            dst = job_hosts[j]
 
             path = dragonfly_route(
                 src, dst, algorithm, d, a,

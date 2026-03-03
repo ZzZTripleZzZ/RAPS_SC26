@@ -150,6 +150,15 @@ def get_network_stats(engine: Engine):
         stats['max_inter_job_congestion'] = 0.0
         stats['min_inter_job_congestion'] = 0.0
 
+    if engine.stall_ratio_history:
+        stall_values = [s for t, s in engine.stall_ratio_history if s is not None]
+        if stall_values:
+            stats['avg_stall_ratio'] = sum(stall_values) / len(stall_values)
+            stats['max_stall_ratio'] = max(stall_values)
+        else:
+            stats['avg_stall_ratio'] = 0.0
+            stats['max_stall_ratio'] = 0.0
+
     return stats
 
 
@@ -427,6 +436,8 @@ def print_formatted_report(engine_stats=None,
         "avg_inter_job_congestion": "{:.2f}",
         "max_inter_job_congestion": "{:.2f}",
         "min_inter_job_congestion": "{:.2f}",
+        "avg_stall_ratio": "{:.4f}",
+        "max_stall_ratio": "{:.4f}",
     })
 
 

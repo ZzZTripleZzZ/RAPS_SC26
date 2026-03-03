@@ -167,6 +167,10 @@ class SystemNetworkConfig(RAPSBaseModel):
     latency_per_hop: float | None = None
     node_coords_csv: str | None = None
 
+    # Cassini stall/flit model parameters
+    mean_packet_size_bytes: int | None = None  # mean packet size for stall ratio (116 for Frontier)
+    flit_size_bytes: int | None = None         # Slingshot Rosetta flit size (64 bytes)
+
 
 class SystemConfig(RAPSBaseModel):
     system_name: str

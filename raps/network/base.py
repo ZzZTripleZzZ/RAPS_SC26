@@ -18,6 +18,77 @@ def debug_print_trace(job, label: str = ""):
         print(f"gpu_trace value {job.gpu_trace} {label}")
 
 
+def compute_stall_ratio(slowdown_factor):
+    """
+    Compute the stall/packet ratio from a slowdown factor.
+
+    This is the RAPS analog of the Cassini counter ratio:
+        (hni_tx_paused_0 + hni_tx_paused_1) / parbs_tarb_pi_posted_pkts
+
+    Derivation: tx_paused = (s - 1) * posted_pkts, so stall_ratio = s - 1.
+    - No congestion (s=1): stall_ratio = 0
+    - Frontier-level load (s≈6.7): stall_ratio ≈ 5.7
+
+    Args:
+        slowdown_factor: Network slowdown factor (≥1.0)
+
+    Returns:
+        Dimensionless stall/packet ratio (≥0.0)
+    """
+    return max(0.0, float(slowdown_factor) - 1.0)
+
+
+def compute_link_stall_packet_stats(loads, link_bw_bps, mean_pkt_size_bytes, dt, slowdown_factor):
+    """
+    Compute per-link stall/packet stats from RAPS link loads.
+
+    Maps to Cassini counters:
+      posted_pkts  ~ parbs_tarb_pi_posted_pkts
+      tx_paused    ~ hni_tx_paused_0 + hni_tx_paused_1
+      stall_ratio  = tx_paused / posted_pkts  = slowdown_factor - 1
+
+    Args:
+        loads: dict {edge: byte_load} per-link byte load for the tick
+        link_bw_bps: link bandwidth in bits/s (e.g. 25e9 * 8 for 25 GB/s)
+        mean_pkt_size_bytes: mean packet size in bytes (116 for Frontier Slingshot)
+        dt: timestep duration in seconds
+        slowdown_factor: network slowdown factor (≥1.0); may be per-job average
+
+    Returns:
+        dict {edge: {'posted_pkts', 'tx_paused', 'stall_ratio', 'utilization'}}
+    """
+    max_pkt_rate = link_bw_bps / (mean_pkt_size_bytes * 8)  # pkts/s at 100% utilization
+    stall = max(0.0, float(slowdown_factor) - 1.0)
+    stats = {}
+    for edge, byte_load in loads.items():
+        rho = (byte_load * 8) / (link_bw_bps * dt) if dt > 0 else 0.0
+        posted_pkts = rho * max_pkt_rate * dt
+        stats[edge] = {
+            'posted_pkts': posted_pkts,
+            'tx_paused': stall * posted_pkts,
+            'stall_ratio': stall,
+            'utilization': min(rho, 1.0),
+        }
+    return stats
+
+
+def aggregate_link_stall_stats(link_stats):
+    """
+    Aggregate per-link stall stats to system-level totals.
+
+    Returns:
+        dict with 'total_posted_pkts', 'total_tx_paused', 'system_stall_ratio'
+    """
+    total_posted = sum(s['posted_pkts'] for s in link_stats.values())
+    total_paused = sum(s['tx_paused'] for s in link_stats.values())
+    system_stall_ratio = total_paused / total_posted if total_posted > 0 else 0.0
+    return {
+        'total_posted_pkts': total_posted,
+        'total_tx_paused': total_paused,
+        'system_stall_ratio': system_stall_ratio,
+    }
+
+
 def apply_job_slowdown(*, job, max_throughput, net_util, net_cong, net_tx, net_rx, debug: bool = False):
     # Get the maximum allowed bandwidth from the configuration.
     if net_cong > 1:
@@ -45,6 +116,7 @@ def apply_job_slowdown(*, job, max_throughput, net_util, net_cong, net_tx, net_r
     else:
         slowdown_factor = 1
     job.slowdown_factor = slowdown_factor
+    job.stall_ratio = compute_stall_ratio(slowdown_factor)
 
     return slowdown_factor
 
@@ -458,13 +530,13 @@ def link_loads_for_pattern(
 
 def worst_link_util(loads, throughput):
     """
-    Given loads in **bytes** and capacity in **bits/sec**, convert:
-      util = (bytes * 8) / throughput
+    Given loads in **bytes** and capacity in **bytes/sec**, compute:
+      util = byte_load / throughput
     Return the maximum util over all links.
     """
     max_util = 0.0
     for edge, byte_load in loads.items():
-        util = (byte_load * 8) / throughput
+        util = byte_load / throughput
         if util > max_util:
             max_util = util
     return max_util
@@ -479,7 +551,7 @@ def get_link_util_stats(loads, throughput, top_n=10):
         return {'max': 0, 'mean': 0, 'min': 0, 'std_dev': 0, 'top_links': []}
 
     # Calculate utilization for every link
-    utilizations = {(edge): (byte_load * 8) / throughput for edge, byte_load in loads.items()}
+    utilizations = {(edge): byte_load / throughput for edge, byte_load in loads.items()}
 
     util_values = list(utilizations.values())
 

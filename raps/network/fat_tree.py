@@ -318,11 +318,17 @@ def link_loads_for_job_fattree_adaptive(
     if n <= 1:
         return loads
 
-    # All-to-all traffic pattern
-    for i, src in enumerate(job_hosts):
-        for j, dst in enumerate(job_hosts):
-            if i == j:
-                continue
+    # All-to-all traffic pattern: each node sends tx_volume_bytes total,
+    # split evenly across (n-1) peers → per_pair volume on each path.
+    # Iterate unordered pairs (i < j) to match compute_all_to_all_coefficients,
+    # which also uses unordered pairs.  Using ordered pairs (i ≠ j) would
+    # double-count every undirected edge and give 2× the true load.
+    per_pair = tx_volume_bytes / (n - 1)
+
+    for i in range(n):
+        for j in range(i + 1, n):
+            src = job_hosts[i]
+            dst = job_hosts[j]
 
             path = fattree_route(
                 G, src, dst, algorithm, link_loads, apsp=apsp, paths_cache=paths_cache
@@ -331,6 +337,6 @@ def link_loads_for_job_fattree_adaptive(
             # Accumulate loads on path edges
             for k in range(len(path) - 1):
                 edge = tuple(sorted([path[k], path[k + 1]]))
-                loads[edge] = loads.get(edge, 0.0) + tx_volume_bytes
+                loads[edge] = loads.get(edge, 0.0) + per_pair
 
     return loads

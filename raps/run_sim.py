@@ -169,6 +169,10 @@ def run_sim(sim_config: SingleSimConfig):
             df = pd.DataFrame(engine.sys_util_history)
             df.to_parquet(out / 'util.parquet', engine='pyarrow')
 
+            if engine.stall_ratio_history:
+                df = pd.DataFrame(engine.stall_ratio_history, columns=['timestep', 'avg_stall_ratio'])
+                df.to_parquet(out / 'stall_ratio_history.parquet', engine='pyarrow')
+
             # Schedule history
             job_history = pd.DataFrame(engine.get_job_history_dict())
             job_history.to_csv(out / "job_history.csv", index=False)

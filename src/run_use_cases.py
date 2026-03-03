@@ -82,6 +82,22 @@ try:
     import matplotlib.pyplot as plt
     from matplotlib.colors import LogNorm
     PLOTTING_AVAILABLE = True
+    # SC paper style — applied once at import time
+    plt.rcParams.update({
+        'font.family':        'sans-serif',
+        'font.size':          10,
+        'axes.labelsize':     11,
+        'xtick.labelsize':    10,
+        'ytick.labelsize':    10,
+        'legend.fontsize':    9,
+        'legend.framealpha':  0.85,
+        'legend.edgecolor':   '#cccccc',
+        'axes.spines.top':    False,
+        'axes.spines.right':  False,
+        'axes.axisbelow':     True,
+        'figure.dpi':         300,
+        'savefig.dpi':        300,
+    })
 except ImportError:
     PLOTTING_AVAILABLE = False
 
@@ -171,26 +187,32 @@ MINI_APP_PATTERNS = {
     'cosp2': CommunicationPattern.STENCIL_3D,  # Use STENCIL_3D for performance (O(N) vs O(N²))
 }
 
+# ColorBrewer Dark2 — colorblind-friendly
 ROUTING_COLORS = {
-    'minimal': '#4ECDC4',
-    'ecmp': '#45B7D1',
-    'ugal': '#F77F00',
-    'valiant': '#FCBF49',
-    'adaptive': '#E17055',
+    'minimal':  '#1B9E77',
+    'ecmp':     '#1B9E77',
+    'ugal':     '#7570B3',
+    'valiant':  '#D95F02',
+    'adaptive': '#E7298A',
 }
 
 POLICY_COLORS = {
-    'fcfs': '#6C5CE7',
-    'fcfs+easy': '#00B894',
-    'fcfs+firstfit': '#0984E3',
-    'sjf': '#FDCB6E',
+    'fcfs':          '#D95F02',
+    'fcfs+easy':     '#1B9E77',
+    'fcfs+firstfit': '#1B9E77',
+    'sjf':           '#7570B3',
 }
 
 ALLOCATION_COLORS = {
-    'contiguous': '#FF6B6B',
-    'random': '#4ECDC4',
-    'hybrid': '#A29BFE',
+    'contiguous': '#1B9E77',
+    'random':     '#D95F02',
+    'hybrid':     '#7570B3',
 }
+
+# Common figure dimensions
+_FIGW = 3.5   # single-column width (inches)
+_FIGH = 2.0   # ~7:4 ratio
+_DPI  = 300
 
 
 # ==========================================
@@ -683,6 +705,7 @@ class SimResult:
 
     # Power/energy
     total_energy_joules: float = 0.0
+    energy_per_completed_job: float = 0.0  # MJ per completed job
     avg_power_watts: float = 0.0
     peak_power_watts: float = 0.0
     idle_energy_pct: float = 0.0
@@ -696,8 +719,13 @@ class SimResult:
     global_traffic_pairs: int = 0
     local_traffic_pairs: int = 0
 
+    # Stall/packet ratio (Cassini counter analog)
+    # stall_packet_ratio = (hni_tx_paused_0 + hni_tx_paused_1) / parbs_tarb_pi_posted_pkts
+    avg_stall_ratio: float = 0.0
+
     # Per-job details (for CDF etc.)
     job_slowdowns: list = field(default_factory=list)
+    job_stall_ratios: list = field(default_factory=list)
     job_wait_times: list = field(default_factory=list)
     job_sizes: list = field(default_factory=list)
     job_comm_intensities: list = field(default_factory=list)
@@ -727,6 +755,7 @@ def run_simulation(
     simulate_network: bool = True,
     label: str = "",
     node_count: int = None,
+    autoshutdown: bool = False,
 ) -> Optional[SimResult]:
     """
     Run a single DES simulation with full metric collection.
@@ -783,13 +812,16 @@ def run_simulation(
 
         # Run simulation
         tick_count = 0
-        for tick_data in engine.run_simulation():
+        for tick_data in engine.run_simulation(autoshutdown=autoshutdown):
             tick_count += 1
 
         t_end = time.perf_counter()
         sim_time = t_end - t_engine
         total_time = t_end - t_start
-        simulated_seconds = duration_minutes * 60
+        # tick_count = number of outer loop iterations in run_simulation (one per
+        # simulated second, regardless of delta_t). delta_t only controls how often
+        # tick() is called, not how fast the outer loop advances.
+        simulated_seconds = tick_count
         speedup = simulated_seconds / sim_time if sim_time > 0 else float('inf')
 
         # Collect network stats
@@ -801,6 +833,7 @@ def run_simulation(
         job_wait_times = []
         job_sizes = []
         job_comm_intensities = []
+        job_stall_ratios = []
         dilated_count = 0
 
         for job in all_jobs:
@@ -816,6 +849,9 @@ def run_simulation(
             if st is not None:
                 wait = st - job.submit_time
                 job_wait_times.append(max(0, wait))
+
+            # Stall/packet ratio per job (Cassini counter analog: slowdown_factor - 1)
+            job_stall_ratios.append(getattr(job, 'stall_ratio', 0.0))
 
         # Bully detection
         potential_bullies = 0
@@ -868,9 +904,18 @@ def run_simulation(
         avg_job_slowdown_val = float(np.mean(job_slowdowns)) if job_slowdowns else 1.0
         max_job_slowdown_val = float(max(job_slowdowns)) if job_slowdowns else 1.0
 
+        # System-level average stall/packet ratio (Cassini counter analog)
+        avg_stall_ratio_val = float(np.mean(job_stall_ratios)) if job_stall_ratios else 0.0
+
         # Jobs completed
         jobs_completed = sum(1 for j in all_jobs
                             if getattr(j, 'end_time', None) is not None)
+
+        # Energy per completed job (MJ/job) — captures the real cost of congestion:
+        # fewer completions in the same window → higher energy per useful job.
+        energy_per_completed_job_mj = (
+            (total_energy / 1e6) / jobs_completed if jobs_completed > 0 else 0.0
+        )
 
         return SimResult(
             label=label,
@@ -896,6 +941,7 @@ def run_simulation(
             max_wait_time=float(max(job_wait_times)) if job_wait_times else 0,
             potential_bullies=potential_bullies,
             total_energy_joules=total_energy,
+            energy_per_completed_job=energy_per_completed_job_mj,
             avg_power_watts=avg_power,
             peak_power_watts=peak_power,
             static_power_kw=power_decomp['static_power_kw'],
@@ -905,10 +951,12 @@ def run_simulation(
             global_local_ratio=gl_ratio['ratio'],
             global_traffic_pairs=gl_ratio['global_traffic'],
             local_traffic_pairs=gl_ratio['local_traffic'],
+            avg_stall_ratio=avg_stall_ratio_val,
             job_slowdowns=job_slowdowns,
             job_wait_times=job_wait_times,
             job_sizes=job_sizes,
             job_comm_intensities=job_comm_intensities,
+            job_stall_ratios=job_stall_ratios,
             power_history=power_history,
             hop_counts=hop_counts,
             congestion_timesteps=cong_timesteps,
@@ -937,6 +985,9 @@ def print_result(result: SimResult, indent: str = "  "):
     print(f"{indent}Dilated: {result.jobs_dilated} ({result.dilated_pct:.1f}%), "
           f"Bullies: {result.potential_bullies}, "
           f"Max congestion: {result.max_congestion:.4f}")
+    if result.avg_stall_ratio > 0:
+        print(f"{indent}Avg stall/pkt ratio: {result.avg_stall_ratio:.3e} "
+              f"(Cassini: hni_tx_paused / tarb_posted_pkts)")
     if result.global_throughput_bps > 0:
         print(f"{indent}Global throughput: {result.global_throughput_bps/1e9:.2f} Gbps")
     if result.avg_hop_count > 0:
@@ -1033,6 +1084,7 @@ def run_uc1_routing(jobs, system, duration_minutes, node_count=None, delta_t=1,
             ('Dilated Jobs (%)', 'dilated_pct'),
             ('Max Congestion', 'max_congestion'),
             ('Avg Network Util (%)', 'avg_network_util'),
+            ('Avg Stall/Pkt Ratio', 'avg_stall_ratio'),
             ('Throughput (Gbps)', None),  # special
             ('Potential Bullies', None),  # special
         ]
@@ -1276,7 +1328,7 @@ def run_uc3_placement(jobs, system, duration_minutes, node_count=None, delta_t=1
 # ==========================================
 
 def run_uc4_energy(jobs, system, duration_minutes, node_count=None, delta_t=1,
-                   resume_csv=None, done_labels=None, **kwargs):
+                   resume_csv=None, done_labels=None, until_complete=True, **kwargs):
     """
     UC4: Quantify the energy cost of network congestion.
 
@@ -1293,6 +1345,13 @@ def run_uc4_energy(jobs, system, duration_minutes, node_count=None, delta_t=1,
 
     routing_algos = _all_routing_algos_for_system(system)
 
+    # For fat-tree systems (e.g. lassen), 'adaptive' routing behaves like 'ecmp' under
+    # block allocation (near-zero inter-switch traffic).  Excluding it avoids an
+    # extra ~88-min SLURM job while keeping the scientific comparison meaningful.
+    if _get_topology(system) != 'dragonfly':
+        adaptive_algo = _adaptive_routing_for_system(system)
+        routing_algos = [a for a in routing_algos if a != adaptive_algo]
+
     # Build experiment configs: baseline (no network) + each routing algo
     configs = [('no_congestion', None, False)]  # (label, routing, simulate_network)
     for algo in routing_algos:
@@ -1301,6 +1360,8 @@ def run_uc4_energy(jobs, system, duration_minutes, node_count=None, delta_t=1,
     print(f"  Configurations: no_congestion, {', '.join(routing_algos)}")
     results = {}
     done_labels = done_labels or set()
+    # Generous time budget for until_complete mode (cap at 10 h to avoid infinite runs)
+    budget = min(duration_minutes * 5, 600) if until_complete else duration_minutes
 
     for config_label, routing, sim_net in configs:
         label = f"UC4_{config_label}"
@@ -1308,11 +1369,13 @@ def run_uc4_energy(jobs, system, duration_minutes, node_count=None, delta_t=1,
             print(f"\n  [SKIP] {config_label} (already saved)")
             continue
         desc = "Ideal (no congestion)" if not sim_net else f"routing={routing}"
+        if until_complete:
+            desc += f" [until-complete, budget={budget}min]"
         print(f"\n  Running: {desc}...")
         result = run_simulation(
             jobs=jobs,
             system=system,
-            duration_minutes=duration_minutes,
+            duration_minutes=budget,
             delta_t=delta_t,
             routing=routing,
             allocation='contiguous',
@@ -1320,6 +1383,7 @@ def run_uc4_energy(jobs, system, duration_minutes, node_count=None, delta_t=1,
             simulate_network=sim_net,
             label=label,
             node_count=node_count,
+            autoshutdown=until_complete,
         )
         if result:
             results[config_label] = result
@@ -1327,7 +1391,8 @@ def run_uc4_energy(jobs, system, duration_minutes, node_count=None, delta_t=1,
             _append_result_to_csv(resume_csv, result)
             print(f"    Total energy: {result.total_energy_joules:.0f} J, "
                   f"Avg power: {result.avg_power_watts:.1f} W, "
-                  f"Peak power: {result.peak_power_watts:.1f} W")
+                  f"Peak power: {result.peak_power_watts:.1f} W, "
+                  f"Makespan: {result.simulated_seconds/60:.1f} min")
 
     # Energy comparison table
     if len(results) >= 2:
@@ -1338,7 +1403,9 @@ def run_uc4_energy(jobs, system, duration_minutes, node_count=None, delta_t=1,
         print(f"  {'-'*(30 + 15 * len(r_keys))}")
 
         metric_list = [
+            ('Makespan (min)', None),          # derived from simulated_seconds
             ('Total Energy (J)', 'total_energy_joules'),
+            ('Energy/Job (MJ)', 'energy_per_completed_job'),
             ('Avg Power (W)', 'avg_power_watts'),
             ('Peak Power (W)', 'peak_power_watts'),
             ('Jobs Completed', 'jobs_completed'),
@@ -1346,7 +1413,10 @@ def run_uc4_energy(jobs, system, duration_minutes, node_count=None, delta_t=1,
             ('Avg Slowdown', 'avg_job_slowdown'),
         ]
         for name, attr in metric_list:
-            vals = [float(getattr(results[k], attr)) for k in r_keys]
+            if attr is None:
+                vals = [results[k].simulated_seconds / 60 for k in r_keys]
+            else:
+                vals = [float(getattr(results[k], attr)) for k in r_keys]
             row = f"  {name:<30}" + "".join(f" {v:>14.1f}" for v in vals)
             print(row)
 
@@ -1400,369 +1470,369 @@ def run_uc4_energy(jobs, system, duration_minutes, node_count=None, delta_t=1,
 
 
 # ==========================================
-# Plotting
+# Plotting  (SC single-column style, no subfigures)
+# figsize = (_FIGW, _FIGH) = (3.5 in × 2.0 in)  ~7:4
 # ==========================================
 
+def _ygrid(ax):
+    ax.yaxis.grid(True, linestyle='--', alpha=0.25, linewidth=0.7, color='#888')
+
+
+def _save_fig(fig, path):
+    fig.tight_layout(pad=0.5)
+    out = Path(path).with_suffix('.png')
+    fig.savefig(out, dpi=_DPI, bbox_inches='tight')
+    plt.close(fig)
+    print(f"  Saved: {out.name}")
+
+
+def _bar_single(ax, labels, values, colors, ylabel, baseline=None, yscale='linear'):
+    """Populate a single-panel bar chart on ax (no title)."""
+    x = np.arange(len(labels))
+    bars = ax.bar(x, values, color=colors, edgecolor='none', width=0.52, alpha=0.88)
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, rotation=20, ha='right')
+    if baseline is not None:
+        ax.axhline(baseline, color='#444', ls='--', lw=1.3, alpha=0.8)
+    v_max = max(values) if values else 1.0
+    for b, v in zip(bars, values):
+        ypos = v * 1.12 if yscale == 'log' else v + v_max * 0.025
+        ax.text(b.get_x() + b.get_width() / 2, ypos,
+                f'{v:.2g}', ha='center', va='bottom', fontsize=8)
+    ax.set_ylabel(ylabel)
+    ax.set_yscale(yscale)
+    _ygrid(ax)
+
+
+# ── UC1 ──────────────────────────────────────────────────────────────────────
+
 def plot_uc1_slowdown_cdf(results, save_path):
-    """Plot CDF of job slowdown factors for UC1."""
+    """CDF of per-job slowdown factors — one line per routing algo."""
     if not PLOTTING_AVAILABLE:
         return
-
-    fig, ax = plt.subplots(figsize=(8, 5))
-
+    fig, ax = plt.subplots(figsize=(_FIGW, _FIGH))
+    all_sd = [sd for r in results.values() for sd in r.job_slowdowns]
+    use_log = bool(all_sd) and max(all_sd) > 100
     for routing, result in results.items():
         if result.job_slowdowns:
-            sorted_sd = np.sort(result.job_slowdowns)
-            cdf = np.arange(1, len(sorted_sd) + 1) / len(sorted_sd)
-            color = ROUTING_COLORS.get(routing, '#888')
-            ax.step(sorted_sd, cdf, where='post', label=routing.title(),
-                    color=color, linewidth=2)
-
-    all_slowdowns = [sd for result in results.values() for sd in result.job_slowdowns]
-    if all_slowdowns and max(all_slowdowns) > 100:
+            s = np.sort(result.job_slowdowns)
+            cdf = np.arange(1, len(s) + 1) / len(s)
+            ax.step(s, cdf, where='post',
+                    label=routing.title(),
+                    color=ROUTING_COLORS.get(routing, '#888'),
+                    linewidth=2)
+    if use_log:
         ax.set_xscale('log')
-        ax.set_xlabel('Job Slowdown Factor (log scale)')
-    else:
-        ax.set_xlabel('Job Slowdown Factor (T_actual / T_ideal)')
     ax.set_xlim(left=0.9)
+    ax.set_xlabel('Job slowdown factor' + (' (log)' if use_log else ''))
     ax.set_ylabel('CDF')
-    ax.set_title('UC1: Job Slowdown CDF - Routing Comparison')
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-    plt.tight_layout()
-    plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    plt.close()
-    print(f"  Saved: {save_path}")
+    ax.legend(loc='lower right')
+    _ygrid(ax)
+    _save_fig(fig, save_path)
 
 
-def plot_uc1_congestion_heatmap(results, save_path):
-    """Plot congestion over time for UC1 (time-series heatmap proxy)."""
+def plot_uc1_congestion_heatmap(results, save_dir):
+    """
+    Congestion over time — one overlaid line per routing algo
+    (single figure, no subfigures).
+    save_dir: directory where uc1_congestion.png will be written.
+    """
     if not PLOTTING_AVAILABLE:
         return
-
-    fig, axes = plt.subplots(len(results), 1, figsize=(12, 3 * len(results)),
-                             sharex=True, squeeze=False)
-
-    for idx, (routing, result) in enumerate(results.items()):
-        ax = axes[idx, 0]
+    fig, ax = plt.subplots(figsize=(_FIGW, _FIGH))
+    has_data = False
+    for routing, result in results.items():
         if result.congestion_timesteps and result.congestion_values:
-            ts = np.array(result.congestion_timesteps) / 60.0  # Convert to minutes
+            ts   = np.array(result.congestion_timesteps) / 60.0
             cong = np.array(result.congestion_values)
-
-            # Create a pseudo-heatmap using color-coded scatter/bar
-            colors = plt.cm.hot(np.clip(cong / (max(cong) + 1e-9), 0, 1))
-            ax.bar(ts, cong, width=(ts[1]-ts[0]) if len(ts) > 1 else 1,
-                   color=colors, edgecolor='none')
-            ax.set_ylabel('Max Link\nOverload Ratio')
-            ax.set_title(f'Routing: {routing.title()}')
-            ax.axhline(y=1.0, color='red', linestyle='--', alpha=0.5, label='Congestion threshold')
-            ax.legend(loc='upper right', fontsize=8)
-        else:
-            ax.text(0.5, 0.5, 'No congestion data', transform=ax.transAxes,
-                    ha='center', va='center')
-
-    axes[-1, 0].set_xlabel('Time (minutes)')
-    fig.suptitle('UC1: Congestion Heatmap Over Time', fontsize=14, y=1.02)
-    plt.tight_layout()
-    plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    plt.close()
-    print(f"  Saved: {save_path}")
+            ax.plot(ts, cong, label=routing.title(),
+                    color=ROUTING_COLORS.get(routing, '#888'),
+                    linewidth=1.8, alpha=0.88)
+            has_data = True
+    if not has_data:
+        ax.text(0.5, 0.5, 'No congestion data', transform=ax.transAxes,
+                ha='center', va='center', color='gray')
+    ax.axhline(1.0, color='#d62728', linestyle='--', linewidth=1.2,
+               alpha=0.7, label='Saturation (1.0)')
+    ax.set_xlabel('Time (min)')
+    ax.set_ylabel('Max link overload ratio')
+    ax.legend(loc='upper right', fontsize=8)
+    _ygrid(ax)
+    _save_fig(fig, Path(save_dir) / "uc1_congestion.png")
 
 
-def plot_uc2_wait_times(results, save_path):
-    """Plot wait time distribution for UC2, grouped by job size."""
+# ── UC2 ──────────────────────────────────────────────────────────────────────
+
+def plot_uc2_wait_times(results, save_dir):
+    """
+    Three separate figures:
+      uc2_wait_boxplot.png   — wait-time distribution by policy
+      uc2_wait_by_size.png   — avg wait time, small vs large jobs
+      uc2_throughput.png     — jobs completed
+    """
     if not PLOTTING_AVAILABLE:
         return
-
-    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
-
     policies = list(results.keys())
-    n_policies = len(policies)
+    colors   = [POLICY_COLORS.get(p, '#888') for p in policies]
+    save_dir = Path(save_dir)
 
-    # (a) Wait time boxplot by policy
-    ax = axes[0]
-    data = []
-    labels = []
-    for policy in policies:
-        result = results[policy]
-        if result.job_wait_times:
-            data.append(result.job_wait_times)
-            labels.append(policy.upper())
+    # (1) Wait-time boxplot
+    data   = [r.job_wait_times for r in results.values() if r.job_wait_times]
+    labels = [p.upper() for p, r in results.items() if r.job_wait_times]
     if data:
-        bp = ax.boxplot(data, tick_labels=labels, patch_artist=True)
-        colors = [POLICY_COLORS.get(p, '#888') for p in policies]
-        for patch, color in zip(bp['boxes'], colors):
-            patch.set_facecolor(color)
-            patch.set_alpha(0.7)
-    ax.set_ylabel('Wait Time (seconds)')
-    ax.set_title('(a) Wait Time Distribution')
-    ax.grid(True, alpha=0.3)
-    ax.tick_params(axis='x', rotation=30)
+        fig, ax = plt.subplots(figsize=(_FIGW, _FIGH))
+        bp = ax.boxplot(data, tick_labels=labels, patch_artist=True, widths=0.5)
+        box_colors = [POLICY_COLORS.get(p, '#888')
+                      for p, r in results.items() if r.job_wait_times]
+        for patch, c in zip(bp['boxes'], box_colors):
+            patch.set_facecolor(c)
+            patch.set_alpha(0.75)
+        ax.set_ylabel('Wait time (s)')
+        ax.tick_params(axis='x', rotation=15)
+        _ygrid(ax)
+        _save_fig(fig, save_dir / "uc2_wait_boxplot.png")
 
-    # (b) Wait time by job size group (small vs large)
-    ax = axes[1]
-    width = 0.8 / n_policies
-    for i, policy in enumerate(policies):
-        result = results[policy]
+    # (2) Wait time by job size
+    n = len(policies)
+    width = 0.7 / n
+    fig, ax = plt.subplots(figsize=(_FIGW, _FIGH))
+    for i, (policy, result) in enumerate(results.items()):
         if result.job_wait_times and result.job_sizes:
-            median_size = np.median(result.job_sizes)
-            small_waits = [w for w, s in zip(result.job_wait_times, result.job_sizes)
-                           if s <= median_size]
-            large_waits = [w for w, s in zip(result.job_wait_times, result.job_sizes)
-                           if s > median_size]
-            x = np.arange(2)
-            offset = (i - n_policies / 2 + 0.5) * width
-            color = POLICY_COLORS.get(policy, '#888')
-            vals = [np.mean(small_waits) if small_waits else 0,
-                    np.mean(large_waits) if large_waits else 0]
-            ax.bar(x + offset, vals, width, label=policy.upper(), color=color, alpha=0.8)
+            med = np.median(result.job_sizes)
+            sw = [w for w, s in zip(result.job_wait_times, result.job_sizes) if s <= med]
+            lw = [w for w, s in zip(result.job_wait_times, result.job_sizes) if s > med]
+            offset = (i - n / 2 + 0.5) * width
+            vals = [np.mean(sw) if sw else 0, np.mean(lw) if lw else 0]
+            ax.bar(np.arange(2) + offset, vals, width,
+                   label=policy.upper(),
+                   color=POLICY_COLORS.get(policy, '#888'), alpha=0.85)
     ax.set_xticks([0, 1])
-    ax.set_xticklabels(['Small Jobs', 'Large Jobs'])
-    ax.set_ylabel('Avg Wait Time (seconds)')
-    ax.set_title('(b) Wait Time by Job Size')
-    ax.legend(fontsize=8)
-    ax.grid(True, alpha=0.3)
+    ax.set_xticklabels(['Small jobs', 'Large jobs'])
+    ax.set_ylabel('Avg wait time (s)')
+    ax.legend(fontsize=8, loc='upper left')
+    _ygrid(ax)
+    _save_fig(fig, save_dir / "uc2_wait_by_size.png")
 
-    # (c) Jobs completed
-    ax = axes[2]
+    # (3) Jobs completed
+    fig, ax = plt.subplots(figsize=(_FIGW, _FIGH))
     completed = [results[p].jobs_completed for p in policies]
-    colors = [POLICY_COLORS.get(p, '#888') for p in policies]
-    ax.bar([p.upper() for p in policies], completed, color=colors, alpha=0.8)
-    ax.set_ylabel('Jobs Completed')
-    ax.set_title('(c) System Throughput')
-    ax.grid(True, alpha=0.3)
-    ax.tick_params(axis='x', rotation=30)
-
-    plt.tight_layout()
-    plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    plt.close()
-    print(f"  Saved: {save_path}")
+    _bar_single(ax, [p.upper() for p in policies], completed, colors,
+                'Jobs completed')
+    _save_fig(fig, save_dir / "uc2_throughput.png")
 
 
-def plot_uc2_utilization_stacked(results, save_path):
-    """Plot system utilization stacked area chart (Running/Idle/Fragmented)."""
+def plot_uc2_utilization_stacked(results, save_dir):
+    """
+    Two separate figures:
+      uc2_running_nodes.png  — running-node time series per policy
+      uc2_node_state.png     — avg node state breakdown (grouped bars)
+    """
     if not PLOTTING_AVAILABLE:
         return
+    save_dir = Path(save_dir)
 
-    fig, axes = plt.subplots(1, len(results), figsize=(7 * len(results), 5),
-                             squeeze=False)
-
-    for idx, (policy, result) in enumerate(results.items()):
-        ax = axes[0, idx]
+    # (1) Running nodes over time
+    fig, ax = plt.subplots(figsize=(_FIGW, _FIGH))
+    has_data = False
+    for policy, result in results.items():
         if result.utilization_breakdown:
-            ts = [u['timestep'] / 60.0 for u in result.utilization_breakdown]
-            running = [u['running'] for u in result.utilization_breakdown]
-            idle = [u['idle'] for u in result.utilization_breakdown]
-            fragmented = [u['fragmented'] for u in result.utilization_breakdown]
+            ts      = [u['timestep'] / 60.0 for u in result.utilization_breakdown]
+            running = [u['running']          for u in result.utilization_breakdown]
+            ax.plot(ts, running, label=policy.upper(),
+                    color=POLICY_COLORS.get(policy, '#888'),
+                    linewidth=1.8, alpha=0.88)
+            has_data = True
+    if not has_data:
+        ax.text(0.5, 0.5, 'No utilization data', transform=ax.transAxes,
+                ha='center', va='center', color='gray')
+    ax.set_xlabel('Time (min)')
+    ax.set_ylabel('Running nodes')
+    ax.legend(fontsize=8, loc='lower right')
+    _ygrid(ax)
+    _save_fig(fig, save_dir / "uc2_running_nodes.png")
 
-            ax.stackplot(ts, running, fragmented, idle,
-                         labels=['Running', 'Fragmented', 'Idle'],
-                         colors=['#2ecc71', '#e74c3c', '#95a5a6'], alpha=0.8)
-            ax.set_xlabel('Time (minutes)')
-            ax.set_ylabel('Nodes')
-            ax.set_title(f'{policy.upper()} Node Utilization')
-            ax.legend(loc='upper right', fontsize=8)
+    # (2) Average node-state breakdown
+    policies = list(results.keys())
+    x, w = np.arange(len(policies)), 0.24
+    avg_run, avg_frag, avg_idle = [], [], []
+    for policy in policies:
+        r = results[policy]
+        if r.utilization_breakdown:
+            avg_run.append(np.mean([u['running']    for u in r.utilization_breakdown]))
+            avg_frag.append(np.mean([u['fragmented'] for u in r.utilization_breakdown]))
+            avg_idle.append(np.mean([u['idle']       for u in r.utilization_breakdown]))
         else:
-            ax.text(0.5, 0.5, 'No utilization data', transform=ax.transAxes,
-                    ha='center', va='center')
+            avg_run.append(0); avg_frag.append(0); avg_idle.append(0)
+    fig, ax = plt.subplots(figsize=(_FIGW, _FIGH))
+    ax.bar(x - w, avg_run,  w, label='Running',    color='#1B9E77', alpha=0.85)
+    ax.bar(x,     avg_frag, w, label='Fragmented', color='#D95F02', alpha=0.85)
+    ax.bar(x + w, avg_idle, w, label='Idle',       color='#7570B3', alpha=0.85)
+    ax.set_xticks(x)
+    ax.set_xticklabels([p.upper() for p in policies], rotation=15)
+    ax.set_ylabel('Avg nodes')
+    ax.legend(fontsize=8, loc='upper right')
+    _ygrid(ax)
+    _save_fig(fig, save_dir / "uc2_node_state.png")
 
-    fig.suptitle('UC2: System Utilization Breakdown', fontsize=14, y=1.02)
-    plt.tight_layout()
-    plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    plt.close()
-    print(f"  Saved: {save_path}")
 
-
-def plot_uc2_prediction_error(results, save_path):
-    """Plot prediction error: planned vs actual job completion time."""
+def plot_uc2_prediction_error(results, save_dir):
+    """
+    One scatter figure per policy:
+      uc2_pred_error_{policy}.png  — planned vs actual runtime
+    """
     if not PLOTTING_AVAILABLE:
         return
-
-    fig, axes = plt.subplots(1, len(results), figsize=(7 * len(results), 5),
-                             squeeze=False)
-
-    for idx, (policy, result) in enumerate(results.items()):
-        ax = axes[0, idx]
+    save_dir = Path(save_dir)
+    for policy, result in results.items():
+        fig, ax = plt.subplots(figsize=(_FIGW, _FIGH))
         if result.prediction_errors:
-            errors = result.prediction_errors
-            dilated = [e for e in errors if e['dilated']]
-            non_dilated = [e for e in errors if not e['dilated']]
-
+            errors     = result.prediction_errors
+            dilated    = [e for e in errors if     e['dilated']]
+            non_dilated= [e for e in errors if not e['dilated']]
             if non_dilated:
                 ax.scatter([e['original_expected'] for e in non_dilated],
-                          [e['actual_runtime'] for e in non_dilated],
-                          c='#2ecc71', alpha=0.6, s=40, label='Non-dilated')
+                           [e['actual_runtime']    for e in non_dilated],
+                           c='#1B9E77', alpha=0.6, s=18, label='On-time')
             if dilated:
                 ax.scatter([e['original_expected'] for e in dilated],
-                          [e['actual_runtime'] for e in dilated],
-                          c='#e74c3c', alpha=0.6, s=40, label='Dilated')
-
-            # Perfect prediction line
-            max_val = max(e['actual_runtime'] for e in errors) * 1.1
-            ax.plot([0, max_val], [0, max_val], 'k--', alpha=0.3, label='Perfect prediction')
-
-            ax.set_xlabel('Planned Runtime (s)')
-            ax.set_ylabel('Actual Runtime (s)')
-            ax.set_title(f'{policy.upper()} Prediction Error')
-            ax.legend(fontsize=8)
-            ax.grid(True, alpha=0.3)
+                           [e['actual_runtime']    for e in dilated],
+                           c='#D95F02', alpha=0.6, s=18, label='Dilated')
+            mv = max(e['actual_runtime'] for e in errors) * 1.08
+            ax.plot([0, mv], [0, mv], 'k--', linewidth=1, alpha=0.3,
+                    label='Perfect prediction')
+            ax.set_xlabel('Planned runtime (s)')
+            ax.set_ylabel('Actual runtime (s)')
+            ax.legend(fontsize=8, loc='upper left')
+            _ygrid(ax)
         else:
             ax.text(0.5, 0.5, 'No prediction data', transform=ax.transAxes,
-                    ha='center', va='center')
-
-    fig.suptitle('UC2: Scheduler Prediction Error (Planned vs Actual)', fontsize=14, y=1.02)
-    plt.tight_layout()
-    plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    plt.close()
-    print(f"  Saved: {save_path}")
+                    ha='center', va='center', color='gray')
+        _save_fig(fig, save_dir / f"uc2_pred_error_{policy}.png")
 
 
-def plot_uc3_placement(results, save_path):
-    """Plot placement comparison for UC3."""
+# ── UC3 ──────────────────────────────────────────────────────────────────────
+
+def plot_uc3_placement(results, save_dir):
+    """
+    Three separate figures:
+      uc3_dilated.png    — jobs slowed by congestion
+      uc3_locality.png   — global/local traffic ratio or hop count
+      uc3_congestion.png — max congestion
+    """
     if not PLOTTING_AVAILABLE:
         return
-
-    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
-
+    save_dir = Path(save_dir)
     allocs = list(results.keys())
     colors = [ALLOCATION_COLORS.get(a, '#888') for a in allocs]
+    labels = [a.title() for a in allocs]
 
-    # (a) Dilated jobs (network-congestion-slowed) percentage
-    ax = axes[0]
-    dilated_pcts = [results[a].dilated_pct for a in allocs]
-    ax.bar([a.title() for a in allocs], dilated_pcts, color=colors, alpha=0.8)
-    ax.set_ylabel('Jobs Slowed by Congestion (%)')
-    ax.set_title('(a) Application Performance Impact')
-    ax.grid(True, alpha=0.3)
+    # (1) Dilated jobs
+    fig, ax = plt.subplots(figsize=(_FIGW, _FIGH))
+    _bar_single(ax, labels, [results[a].dilated_pct for a in allocs], colors,
+                'Jobs slowed by congestion (%)')
+    _save_fig(fig, save_dir / "uc3_dilated.png")
 
-    # (b) Global/Local traffic ratio (or avg hop count for fat-tree topologies)
-    ax = axes[1]
+    # (2) Traffic locality
+    fig, ax = plt.subplots(figsize=(_FIGW, _FIGH))
     ratios = [results[a].global_local_ratio for a in allocs]
-    if all(r == 0.0 for r in ratios):
-        # Fallback: fat-tree has no global/local distinction, use hop count instead
-        hops = [results[a].avg_hop_count for a in allocs]
-        ax.bar([a.title() for a in allocs], hops, color=colors, alpha=0.8)
-        ax.set_ylabel('Avg Hop Count')
-        ax.set_title('(b) Traffic Locality (Hop Count)')
+    if any(r > 0 for r in ratios):
+        _bar_single(ax, labels, ratios, colors, 'Global / local traffic ratio')
     else:
-        ax.bar([a.title() for a in allocs], ratios, color=colors, alpha=0.8)
-        ax.set_ylabel('Global / Local Traffic Ratio')
-        ax.set_title('(b) Traffic Locality')
-    ax.grid(True, alpha=0.3)
+        _bar_single(ax, labels, [results[a].avg_hop_count for a in allocs], colors,
+                    'Avg hop count')
+    _save_fig(fig, save_dir / "uc3_locality.png")
 
-    # (c) Congestion
-    ax = axes[2]
-    congestion = [results[a].max_congestion for a in allocs]
-    ax.bar([a.title() for a in allocs], congestion, color=colors, alpha=0.8)
-    ax.set_ylabel('Max Congestion')
-    ax.set_title('(c) Network Congestion')
-    ax.grid(True, alpha=0.3)
-
-    plt.tight_layout()
-    plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    plt.close()
-    print(f"  Saved: {save_path}")
+    # (3) Max congestion
+    fig, ax = plt.subplots(figsize=(_FIGW, _FIGH))
+    _bar_single(ax, labels, [results[a].max_congestion for a in allocs], colors,
+                'Max congestion')
+    _save_fig(fig, save_dir / "uc3_congestion.png")
 
 
 def plot_uc3_hop_count(results, save_path):
-    """Plot hop count distribution for UC3."""
+    """Hop count distribution histogram — one curve per allocation strategy."""
     if not PLOTTING_AVAILABLE:
         return
-
-    fig, ax = plt.subplots(figsize=(8, 5))
-
+    fig, ax = plt.subplots(figsize=(_FIGW, _FIGH))
     for alloc, result in results.items():
         if result.hop_counts:
-            color = ALLOCATION_COLORS.get(alloc, '#888')
-            ax.hist(result.hop_counts, bins=range(1, max(result.hop_counts) + 2),
-                    alpha=0.6, color=color, label=f'{alloc.title()} (avg={result.avg_hop_count:.1f})',
-                    edgecolor='white', density=True)
-
-    ax.set_xlabel('Hop Count')
+            ax.hist(result.hop_counts,
+                    bins=range(1, max(result.hop_counts) + 2),
+                    alpha=0.62,
+                    color=ALLOCATION_COLORS.get(alloc, '#888'),
+                    label=f'{alloc.title()} (μ={result.avg_hop_count:.1f})',
+                    edgecolor='none', density=True)
+    ax.set_xlabel('Hop count')
     ax.set_ylabel('Density')
-    ax.set_title('UC3: Hop Count Distribution by Placement Strategy')
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-    plt.tight_layout()
-    plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    plt.close()
-    print(f"  Saved: {save_path}")
+    ax.legend(fontsize=8)
+    _ygrid(ax)
+    _save_fig(fig, save_path)
 
 
 def plot_uc3_speedup_vs_comm(results, save_path):
-    """Plot application speedup vs communication intensity for UC3."""
+    """Job slowdown vs communication intensity scatter plot."""
     if not PLOTTING_AVAILABLE:
         return
-
-    fig, ax = plt.subplots(figsize=(8, 5))
-
+    fig, ax = plt.subplots(figsize=(_FIGW, _FIGH))
     for alloc, result in results.items():
         if result.job_comm_intensities and result.job_slowdowns:
-            color = ALLOCATION_COLORS.get(alloc, '#888')
             ax.scatter(result.job_comm_intensities, result.job_slowdowns,
-                      alpha=0.6, color=color, s=30, label=alloc.title())
-
-    ax.set_xlabel('Communication Intensity (bytes/node/s)')
-    ax.set_ylabel('Job Slowdown Factor')
-    ax.set_title('UC3: Slowdown vs Communication Intensity')
-    ax.legend()
-    ax.grid(True, alpha=0.3)
+                       alpha=0.55,
+                       color=ALLOCATION_COLORS.get(alloc, '#888'),
+                       s=16, label=alloc.title())
     if any(r.job_comm_intensities for r in results.values()):
         ax.set_xscale('log')
-    plt.tight_layout()
-    plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    plt.close()
-    print(f"  Saved: {save_path}")
+    ax.set_xlabel('Communication intensity (B/node/s)')
+    ax.set_ylabel('Job slowdown factor')
+    ax.legend(fontsize=8, loc='upper left')
+    _ygrid(ax)
+    _save_fig(fig, save_path)
 
 
-def plot_uc4_energy(results, save_path):
-    """Plot energy comparison for UC4."""
+# ── UC4 ──────────────────────────────────────────────────────────────────────
+
+def plot_uc4_energy(results, save_dir):
+    """
+    Three separate figures:
+      uc4_epj.png    — energy per completed job
+      uc4_dilated.png— jobs slowed by network
+      uc4_power.png  — static vs dynamic power (stacked bar)
+    """
     if not PLOTTING_AVAILABLE:
         return
-
-    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
-
+    save_dir = Path(save_dir)
     configs = list(results.keys())
-    labels = [c.replace('no_congestion', 'Ideal\n(no net)') for c in configs]
-    # Generate colors dynamically
-    cmap = plt.cm.Set2
-    colors_list = [cmap(i / max(1, len(configs) - 1)) for i in range(len(configs))]
+    labels  = [c.replace('no_congestion', 'Ideal') for c in configs]
+    pal     = ['#4DAF4A'] + ['#1B9E77', '#D95F02', '#7570B3'][:len(configs) - 1]
+    colors  = pal[:len(configs)]
 
-    # (a) Total energy
-    ax = axes[0]
-    energies = [results[c].total_energy_joules / 1e6 for c in configs]  # MJ
-    ax.bar(labels, energies, color=colors_list, alpha=0.8)
-    ax.set_ylabel('Total Energy (MJ)')
-    ax.set_title('(a) Energy-to-Solution')
-    ax.grid(True, alpha=0.3)
-    ax.tick_params(axis='x', rotation=30)
+    # (1) Energy per completed job
+    fig, ax = plt.subplots(figsize=(_FIGW, _FIGH))
+    epj = [results[c].energy_per_completed_job for c in configs]
+    _bar_single(ax, labels, epj, colors, 'Energy / job (MJ/job)')
+    _save_fig(fig, save_dir / "uc4_epj.png")
 
-    # (b) Jobs slowed by network congestion per routing config
-    ax = axes[1]
-    dilated_vals = [results[c].dilated_pct for c in configs]
-    ax.bar(labels, dilated_vals, color=colors_list, alpha=0.8)
-    ax.set_ylabel('Jobs Slowed by Network (%)')
-    ax.set_title('(b) Network Congestion Impact')
-    ax.grid(True, alpha=0.3)
-    ax.tick_params(axis='x', rotation=30)
+    # (2) Dilated jobs
+    fig, ax = plt.subplots(figsize=(_FIGW, _FIGH))
+    dilated = [results[c].dilated_pct for c in configs]
+    _bar_single(ax, labels, dilated, colors, 'Jobs slowed (%)')
+    _save_fig(fig, save_dir / "uc4_dilated.png")
 
-    # (c) Static vs Dynamic power decomposition (stacked bar)
-    ax = axes[2]
-    static_vals = [results[c].static_power_kw for c in configs]
-    dynamic_vals = [results[c].dynamic_power_kw for c in configs]
-    ax.bar(labels, static_vals, color='#95a5a6', alpha=0.8, label='Static (idle)')
-    ax.bar(labels, dynamic_vals, bottom=static_vals,
-           color='#e67e22', alpha=0.8, label='Dynamic (compute)')
-    ax.set_ylabel('Power (kW)')
-    ax.set_title('(c) Power Decomposition')
-    ax.legend(fontsize=8)
-    ax.grid(True, alpha=0.3)
-    ax.tick_params(axis='x', rotation=30)
-
-    plt.tight_layout()
-    plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    plt.close()
-    print(f"  Saved: {save_path}")
+    # (3) Power decomposition (stacked bar, single panel)
+    fig, ax = plt.subplots(figsize=(_FIGW, _FIGH))
+    static_v  = [results[c].static_power_kw  for c in configs]
+    dynamic_v = [results[c].dynamic_power_kw for c in configs]
+    x = np.arange(len(configs))
+    ax.bar(x, static_v,  color='#7570B3', alpha=0.85, label='Static (idle)',
+           edgecolor='none', width=0.52)
+    ax.bar(x, dynamic_v, bottom=static_v, color='#D95F02', alpha=0.85,
+           label='Dynamic (compute)', edgecolor='none', width=0.52)
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, rotation=20, ha='right')
+    ax.set_ylabel('Avg power (kW)')
+    ax.legend(fontsize=8, loc='upper right')
+    _ygrid(ax)
+    _save_fig(fig, save_dir / "uc4_power.png")
 
 
 # ==========================================
@@ -1800,6 +1870,7 @@ def _load_uc_results_from_csv(csv_path, key_col):
             max_wait_time=float(row.get('max_wait_time', 0)),
             potential_bullies=int(row.get('potential_bullies', 0)),
             total_energy_joules=float(row.get('total_energy_joules', 0)),
+            energy_per_completed_job=float(row.get('energy_per_completed_job', 0)),
             avg_power_watts=float(row.get('avg_power_watts', 0)),
             peak_power_watts=float(row.get('peak_power_watts', 0)),
             idle_energy_pct=float(row.get('idle_energy_pct', 0)),
@@ -1822,18 +1893,17 @@ def regenerate_plots_from_csv(output_dir, figures_dir, uc_to_run):
         csv3 = output_dir / "uc3_placement_results.csv"
         if csv3.exists():
             results = _load_uc_results_from_csv(csv3, 'allocation')
-            plot_uc3_placement(results, figures_dir / "uc3_placement.png")
-            print(f"  [CSV] Regenerated uc3_placement.png")
+            plot_uc3_placement(results, figures_dir)
+            print(f"  [CSV] Regenerated uc3_*.png")
         else:
             print(f"  [SKIP] {csv3} not found")
     if 4 in uc_to_run:
         csv4 = output_dir / "uc4_energy_results.csv"
         if csv4.exists():
-            # Key by label with UC4_ prefix stripped
             results_raw = _load_uc_results_from_csv(csv4, 'label')
             results = {k.replace('UC4_', '', 1): v for k, v in results_raw.items()}
-            plot_uc4_energy(results, figures_dir / "uc4_energy.png")
-            print(f"  [CSV] Regenerated uc4_energy.png")
+            plot_uc4_energy(results, figures_dir)
+            print(f"  [CSV] Regenerated uc4_*.png")
         else:
             print(f"  [SKIP] {csv4} not found")
 
@@ -1958,7 +2028,7 @@ def main():
 
     # Helper: check if a UC result CSV already exists with expected variants
     def _uc_complete(csv_name, expected_variants):
-        """Return True if the CSV exists and has rows for all expected variants."""
+        """Return True if the CSV has rows for all expected UNIQUE variant labels."""
         if args.force:
             return False
         csv_path = output_dir / csv_name
@@ -1966,7 +2036,9 @@ def main():
             return False
         try:
             df = pd.read_csv(csv_path)
-            return len(df) >= expected_variants
+            if 'label' not in df.columns:
+                return len(df) >= expected_variants
+            return df['label'].nunique() >= expected_variants
         except Exception:
             return False
 
@@ -1989,7 +2061,7 @@ def main():
 
             if results and not args.no_plots:
                 plot_uc1_slowdown_cdf(results, figures_dir / "uc1_slowdown_cdf.png")
-                plot_uc1_congestion_heatmap(results, figures_dir / "uc1_congestion_heatmap.png")
+                plot_uc1_congestion_heatmap(results, figures_dir)
 
     # UC2: Scheduling (3 variants: fcfs, fcfs+firstfit, sjf)
     uc2_csv = "uc2_scheduling_results.csv"
@@ -2008,9 +2080,9 @@ def main():
             all_results['uc2'] = results
 
             if results and not args.no_plots:
-                plot_uc2_wait_times(results, figures_dir / "uc2_wait_times.png")
-                plot_uc2_utilization_stacked(results, figures_dir / "uc2_utilization_stacked.png")
-                plot_uc2_prediction_error(results, figures_dir / "uc2_prediction_error.png")
+                plot_uc2_wait_times(results, figures_dir)
+                plot_uc2_utilization_stacked(results, figures_dir)
+                plot_uc2_prediction_error(results, figures_dir)
 
     # UC3: Node Placement (3 variants: contiguous, random, hybrid)
     uc3_csv = "uc3_placement_results.csv"
@@ -2029,12 +2101,16 @@ def main():
             all_results['uc3'] = results
 
             if results and not args.no_plots:
-                plot_uc3_placement(results, figures_dir / "uc3_placement.png")
-                plot_uc3_hop_count(results, figures_dir / "uc3_hop_count.png")
+                plot_uc3_placement(results, figures_dir)
                 plot_uc3_speedup_vs_comm(results, figures_dir / "uc3_speedup_vs_comm.png")
 
-    # UC4: Energy Cost (1 + num_routing_algos variants: no_congestion + each routing)
-    num_uc4_variants = 1 + num_routing_algos
+    # UC4: Energy Cost (no_congestion + each routing algo).
+    # For fat-tree systems, adaptive routing ≈ ecmp so it is excluded from UC4
+    # (see run_uc4_energy), giving 1 + num_routing_algos - 1 = num_routing_algos variants.
+    if _get_topology(args.system) != 'dragonfly':
+        num_uc4_variants = num_routing_algos  # no_congestion + (all algos minus adaptive)
+    else:
+        num_uc4_variants = 1 + num_routing_algos  # no_congestion + all algos
     uc4_csv = "uc4_energy_results.csv"
     if 4 in uc_to_run:
         if _uc_complete(uc4_csv, num_uc4_variants):
@@ -2051,7 +2127,7 @@ def main():
             all_results['uc4'] = results
 
             if results and not args.no_plots:
-                plot_uc4_energy(results, figures_dir / "uc4_energy.png")
+                plot_uc4_energy(results, figures_dir)
 
     # Final summary
     print("\n" + "=" * 60)

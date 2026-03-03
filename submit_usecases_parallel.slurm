@@ -21,7 +21,8 @@ _handle_timeout() {
     wait
     echo "Children terminated, resubmitting..."
     if [ $RESUBMIT_COUNT -lt $MAX_RESUBMIT ]; then
-        sbatch --export=ALL,SLURM_RESUBMIT_COUNT=$((RESUBMIT_COUNT + 1)) "$0"
+        # Set new count in env BEFORE sbatch so --export=ALL picks up the incremented value.
+        SLURM_RESUBMIT_COUNT=$((RESUBMIT_COUNT + 1)) sbatch --export=ALL "$0"
     fi
     exit 99
 }

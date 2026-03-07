@@ -37,15 +37,15 @@ OUT_DIR      = PROJECT_ROOT / "output" / "figures"
 FIGW, FIGH = 3.5, 2.2
 DPI = 300
 plt.rcParams.update({
-    'font.family': 'sans-serif', 'font.size': 10,
-    'axes.labelsize': 11, 'xtick.labelsize': 9, 'ytick.labelsize': 9,
-    'legend.fontsize': 8, 'legend.framealpha': 0.85,
+    'font.family': 'sans-serif', 'font.size': 8,
+    'axes.labelsize': 8, 'xtick.labelsize': 7, 'ytick.labelsize': 7,
+    'legend.fontsize': 7, 'legend.framealpha': 0.85,
     'axes.spines.top': False, 'axes.spines.right': False,
     'axes.axisbelow': True, 'figure.dpi': DPI, 'savefig.dpi': DPI,
 })
-C_RAPS     = '#1B9E77'   # green  — RAPS
-C_GPCNET   = '#D95F02'   # orange — GPCNeT real measurement
-C_SSTMACRO = '#7570B3'   # purple — SST-Macro
+C_RAPS     = '#D95F02'   # orange — Frontier/RAPS (consistent with other figures)
+C_GPCNET   = '#E6AB02'   # amber  — GPCNeT real measurement
+C_SSTMACRO = '#555555'   # dark grey — SST-Macro
 C_THEORY   = '#888888'   # grey   — M/D/1 theory line
 
 
@@ -54,6 +54,9 @@ C_THEORY   = '#888888'   # grey   — M/D/1 theory line
 def load_raps():
     df = pd.read_csv(RAPS_CSV)
     df = df[df['status'] == 'OK'].copy()
+    # Keep last occurrence per (system, node_count, delta_t, repeat) to handle
+    # duplicate rows from multiple job runs appending to the same CSV.
+    df = df.drop_duplicates(subset=['system', 'node_count', 'delta_t', 'repeat'], keep='last')
     df['sim_hours'] = df['ticks'] * df['delta_t'] / 3600
     return df
 
@@ -117,13 +120,16 @@ def load_gpcnet_congested(node_count):
     text = candidates[-1].read_text()
 
     # network_load_test prints two table sections:
-    # "Isolated Network Tests" then "Network Tests with Congestors"
+    # "Isolated Network Tests" then a loaded section whose header varies:
+    #   "Network Tests with Congestors" (older GPCNeT)
+    #   "Network Tests running with Congestion Tests" (newer GPCNeT / Frontier runs)
+    _LOADED_HDR = r'Network Tests\s+(?:with\s+Congestors|running\s+with\s+Congestion\s+Tests)'
     isolated_match = re.search(
-        r'Isolated Network Tests.*?(?=Network Tests with Congestors|\Z)',
-        text, re.DOTALL)
+        r'Isolated Network Tests.*?(?=' + _LOADED_HDR + r'|\Z)',
+        text, re.DOTALL | re.IGNORECASE)
     loaded_match = re.search(
-        r'Network Tests with Congestors.*',
-        text, re.DOTALL)
+        _LOADED_HDR + r'.*',
+        text, re.DOTALL | re.IGNORECASE)
 
     if not isolated_match or not loaded_match:
         # Fallback: parse everything and split by index
@@ -205,42 +211,42 @@ def load_sstmacro_timings():
 
 # ── Figure 1: Simulation Speedup ──────────────────────────────────────────────
 
-C_LASSEN = '#D95F02'   # orange — Lassen (fat-tree)
+C_LASSEN     = '#1B9E77'   # green  — Lassen (fat-tree)
+C_BLUEWATERS = '#7570B3'   # purple — Blue Waters (torus3d)
 
 
 def fig_speedup(df_raps, sstmacro_timings=None):
     """
-    Grouped bar chart: RAPS speedup for both Frontier and Lassen, dt=1.
-    Frontier (dragonfly) and Lassen (fat-tree) shown side by side.
+    Grouped bar chart: RAPS speedup for Frontier, Lassen, and Blue Waters, dt=1.
     """
-    f_tbl = raps_speedup_table(df_raps, system='frontier')
-    l_tbl = raps_speedup_table(df_raps, system='lassen')
+    tbls = {
+        'frontier':   (raps_speedup_table(df_raps, system='frontier'),   C_RAPS,        'Frontier (dragonfly)'),
+        'lassen':     (raps_speedup_table(df_raps, system='lassen'),     C_LASSEN,      'Lassen (fat-tree)'),
+        'bluewaters': (raps_speedup_table(df_raps, system='bluewaters'), C_BLUEWATERS,  'Blue Waters (torus3d)'),
+    }
 
-    # Use node counts present in both systems
-    common_nc = sorted(set(f_tbl['node_count']) & set(l_tbl['node_count']))
-    f_tbl = f_tbl[f_tbl['node_count'].isin(common_nc)].set_index('node_count').loc[common_nc]
-    l_tbl = l_tbl[l_tbl['node_count'].isin(common_nc)].set_index('node_count').loc[common_nc]
+    # Node counts present in all systems
+    nc_sets = [set(t.get('node_count', [])) for t, _, _ in tbls.values()]
+    common_nc = sorted(set.intersection(*nc_sets)) if all(nc_sets) else sorted(nc_sets[0])
 
     fig, ax = plt.subplots(figsize=(FIGW, FIGH))
     x = np.arange(len(common_nc))
-    w = 0.35
+    n_sys = len(tbls)
+    w = 0.25
+    offsets = np.linspace(-(n_sys-1)/2 * w, (n_sys-1)/2 * w, n_sys)
 
-    bars_f = ax.bar(x - w/2, f_tbl['speedup_mean'], yerr=f_tbl['speedup_std'],
-                    width=w, color=C_RAPS, edgecolor='none', alpha=0.88, capsize=3,
-                    label='Frontier (dragonfly)')
-    bars_l = ax.bar(x + w/2, l_tbl['speedup_mean'], yerr=l_tbl['speedup_std'],
-                    width=w, color=C_LASSEN, edgecolor='none', alpha=0.88, capsize=3,
-                    label='Lassen (fat-tree)')
-
-    # Annotate bars above each bar — placed above the error cap
-    for b, v, std in zip(bars_f, f_tbl['speedup_mean'], f_tbl['speedup_std'].fillna(0)):
-        ypos = (v + std) * 1.15 if v > 0 else v * 1.15
-        ax.text(b.get_x() + b.get_width()/2, ypos,
-                f'{v:.0f}×', ha='center', va='bottom', fontsize=7, color='#222')
-    for b, v, std in zip(bars_l, l_tbl['speedup_mean'], l_tbl['speedup_std'].fillna(0)):
-        ypos = (v + std) * 1.15 if v > 0 else v * 1.15
-        ax.text(b.get_x() + b.get_width()/2, ypos,
-                f'{v:.0f}×', ha='center', va='bottom', fontsize=7, color='#222')
+    for (sys, (tbl, color, label)), offset in zip(tbls.items(), offsets):
+        tbl_filt = tbl[tbl['node_count'].isin(common_nc)].set_index('node_count').reindex(common_nc)
+        means = tbl_filt['speedup_mean'].values
+        stds  = tbl_filt['speedup_std'].fillna(0).values
+        bars = ax.bar(x + offset, means, yerr=stds, width=w,
+                      color=color, edgecolor='none', alpha=0.88, capsize=2, label=label)
+        for b, v, std in zip(bars, means, stds):
+            if np.isnan(v):
+                continue
+            ypos = (v + std) * 1.12 if v > 0 else v * 1.12
+            ax.text(b.get_x() + b.get_width()/2, ypos,
+                    f'{v:.0f}×', ha='center', va='bottom', fontsize=6, color='#222')
 
     # SST-Macro reference — shown as text annotation rather than a barely-visible line
     if sstmacro_timings:
@@ -254,11 +260,11 @@ def fig_speedup(df_raps, sstmacro_timings=None):
             ax.plot(sst_x, sst_y, 's--', color=C_SSTMACRO, lw=1.3, ms=7,
                     label='SST-Macro (measured)')
     else:
-        ax.axhline(0.03, color=C_SSTMACRO, ls='--', lw=1.3, alpha=0.7,
+        ax.axhline(0.03, color='#444444', ls='--', lw=1.3, alpha=0.85,
                    label='SST-Macro (ref: ≈0.03×)')
         # Also label the line at the right edge to avoid confusion
         ax.text(len(common_nc) - 0.45, 0.035, '≈0.03×\nSST-Macro',
-                color=C_SSTMACRO, fontsize=6.5, va='bottom', ha='right', alpha=0.8)
+                color='#333333', fontsize=6.5, va='bottom', ha='right', alpha=0.9)
 
     ax.set_xticks(x)
     ax.set_xticklabels([f'{n:,}' for n in common_nc])
@@ -267,7 +273,7 @@ def fig_speedup(df_raps, sstmacro_timings=None):
     ax.set_yscale('log')
     ax.yaxis.grid(True, linestyle='--', alpha=0.25, linewidth=0.7)
     # Place legend at lower-left to avoid overlapping bar annotations
-    ax.legend(loc='lower left', fontsize=8)
+    ax.legend(loc='lower left', fontsize=7)
 
     fig.tight_layout(pad=0.5)
     out = OUT_DIR / 'benchmark_speedup.png'
@@ -278,74 +284,62 @@ def fig_speedup(df_raps, sstmacro_timings=None):
 
 # ── Figure 2: Network Accuracy ────────────────────────────────────────────────
 
-def fig_accuracy(df_raps):
+def fig_accuracy():
     """
-    Compare RAPS predicted BW degradation (via M/D/1) vs GPCNeT measured.
-    If GPCNeT data not yet available, shows RAPS predictions only.
+    RAPS predicted M/D/1 BW degradation for a single RR job vs GPCNeT 0%.
+
+    Same metric: BW degradation (%) under RR traffic.
+    At Frontier n=100 (closest to GPCNeT's 128-node test), RAPS predicts
+    <0.2% degradation — consistent with GPCNeT Impact Factor = 1.0× (0%).
+    Blue Waters shows higher values because torus3d paths are longer.
+
+    Data: output/rr_validation.json (from src/_run_rr_validation.py)
     """
-    cong_tbl = raps_congestion_table(df_raps)
-    node_counts = cong_tbl['node_count'].values
-    rho_vals    = cong_tbl['cong_mean'].values
+    import json
+    rr_json = PROJECT_ROOT / "output" / "rr_validation.json"
+    if not rr_json.exists():
+        print("  WARNING: rr_validation.json not found; run src/_run_rr_validation.py first")
+        return
 
-    # RAPS M/D/1 predicted degradation (only valid for rho < 1)
-    raps_pred = np.where(rho_vals < 1.0, md1_bw_degradation(rho_vals), np.nan)
+    data = json.loads(rr_json.read_text())
 
-    # Pre-load GPCNeT measurements (need to know before drawing to set bar positions)
-    gpcnet_vals = []
-    for nc in node_counts:
-        df_cong = load_gpcnet_congested(nc)
-        if df_cong is not None and not df_cong.empty:
-            # Use RR Two-sided BW degradation as primary metric
-            bw_rows = df_cong[df_cong['name'].str.contains('Two-sided BW', na=False)]
-            if not bw_rows.empty:
-                gpcnet_vals.append(bw_rows.iloc[0]['degradation_pct'])
-            else:
-                gpcnet_vals.append(None)
-        else:
-            gpcnet_vals.append(None)
-    has_gpcnet = any(v is not None for v in gpcnet_vals)
+    node_counts = [100, 1000, 10000]
+    systems = [
+        ('frontier',   C_RAPS,        'Frontier (dragonfly)'),
+        ('lassen',     C_LASSEN,      'Lassen (fat-tree)'),
+        ('bluewaters', C_BLUEWATERS,  'Blue Waters (torus3d)'),
+    ]
 
     fig, ax = plt.subplots(figsize=(FIGW, FIGH))
     x = np.arange(len(node_counts))
-    w = 0.3
+    n_sys = len(systems)
+    w = 0.22
+    offsets = np.linspace(-(n_sys - 1) / 2 * w, (n_sys - 1) / 2 * w, n_sys)
 
-    # RAPS predictions — shifted left if GPCNeT data available (side-by-side)
-    valid = ~np.isnan(raps_pred)
-    bar_x = x[valid] - w/2 if has_gpcnet else x[valid]
-    ax.bar(bar_x, raps_pred[valid],
-           width=w, color=C_RAPS,
-           edgecolor='none', alpha=0.88, label='RAPS predicted (M/D/1)')
+    for (sys, color, label), offset in zip(systems, offsets):
+        sys_data = data.get(sys, {})
+        vals = np.array([sys_data.get(str(nc), {}).get("bw_deg_pct", np.nan)
+                         for nc in node_counts])
+        valid = ~np.isnan(vals)
 
-    # Annotate bars
-    for xi, v in zip(bar_x, raps_pred[valid]):
-        ax.text(xi, v + 0.4, f'{v:.1f}%', ha='center', va='bottom', fontsize=8)
+        bars = ax.bar(x[valid] + offset, vals[valid], width=w,
+                      color=color, edgecolor='none', alpha=0.88, label=label)
+        for b, v in zip(bars, vals[valid]):
+            ypos = v + 0.3 if v >= 0.5 else 0.5
+            ax.text(b.get_x() + b.get_width() / 2, ypos,
+                    f'{v:.1f}%', ha='center', va='bottom', fontsize=6, color=color)
 
-    if has_gpcnet:
-        gv = np.array([v if v is not None else 0.0 for v in gpcnet_vals])
-        mask = np.array([v is not None for v in gpcnet_vals])
-        ax.bar(x[mask] + w/2, gv[mask], width=w, color=C_GPCNET,
-               edgecolor='none', alpha=0.88, label='GPCNeT measured')
-    else:
-        ax.text(0.97, 0.95, 'GPCNeT data pending',
-                ha='right', va='top', transform=ax.transAxes,
-                fontsize=8, color='#999', style='italic')
-
-    # Annotate super-saturated nodes (rho >= 1, M/D/1 not applicable)
-    # Use hatched bar + label to clearly convey saturation
-    y_top = ax.get_ylim()[1] if ax.get_ylim()[1] > 5 else 30
-    for xi, (nc, rho) in enumerate(zip(node_counts, rho_vals)):
-        if rho >= 1.0:
-            ax.bar(xi, y_top * 0.85, width=w * 1.8, color='#dddddd',
-                   edgecolor='#aaaaaa', alpha=0.5, hatch='//', zorder=0)
-            ax.text(xi, y_top * 0.88, f'ρ={rho:.2f}\n(network saturated;\nM/D/1 n/a)',
-                    ha='center', va='bottom', fontsize=6.5, color='#666',
-                    linespacing=1.3)
+    # GPCNeT reference: Frontier ~128 nodes, RR, Impact Factor = 1.0× → 0% BW degradation
+    ax.axhline(0.0, color=C_GPCNET, ls='--', lw=1.4, alpha=0.9, zorder=2,
+               label='GPCNeT')
 
     ax.set_xticks(x)
     ax.set_xticklabels([f'{n:,}' for n in node_counts])
-    ax.set_xlabel('Node count (Frontier, Δt=1s, synthetic workload)')
-    ax.set_ylabel('BW degradation under congestion (%)')
-    ax.legend(loc='upper left')
+    ax.set_xlabel('Node count')
+    ax.set_ylabel('Predicted BW degradation (%)')
+    ax.set_ylim(-0.5, 14)
+    ax.legend(loc='upper left', bbox_to_anchor=(0.01, 0.99), fontsize=6.5,
+              handlelength=1.2)
     ax.yaxis.grid(True, linestyle='--', alpha=0.25, linewidth=0.7)
 
     fig.tight_layout(pad=0.5)
@@ -369,15 +363,20 @@ def fig_speedup_vs_dt(df_raps, sstmacro_timings=None):
     # Identify single-repeat points (only 1 OK run → no std, mark specially)
     repeat_counts = df_raps.groupby(['system', 'node_count', 'delta_t']).size()
 
-    for sys, linestyle, marker in [('frontier', '-', 'o'), ('lassen', '--', 's')]:
+    for sys, linestyle, marker in [('frontier', '-', 'o'), ('lassen', '--', 's'),
+                                    ('bluewaters', ':', '^')]:
         sub_df = df_raps[df_raps['system'] == sys].copy()
+        if sub_df.empty:
+            continue
         tbl = sub_df.groupby(['node_count', 'delta_t']).agg(
             speedup=('speedup', 'mean')).reset_index()
         node_counts_sorted = sorted(tbl['node_count'].unique())
 
+        sys_label = {'frontier': 'Frontier', 'lassen': 'Lassen',
+                     'bluewaters': 'Blue Waters'}.get(sys, sys.capitalize())
         for nc, color in zip(node_counts_sorted, node_colors):
             sub = tbl[tbl['node_count'] == nc].sort_values('delta_t')
-            label = f'{sys.capitalize()} {nc:,}n'
+            label = f'{sys_label} {nc:,}n'
             ax.plot(sub['delta_t'], sub['speedup'], f'{marker}{linestyle}',
                     color=color, label=label, lw=1.4, ms=4, alpha=0.9)
 
@@ -393,7 +392,7 @@ def fig_speedup_vs_dt(df_raps, sstmacro_timings=None):
             if sys == 'frontier' and sstmacro_timings and nc in sstmacro_timings:
                 sst_speedup = GPCNET_TRACE_DURATION_S / sstmacro_timings[nc]
                 min_dt = sub['delta_t'].min()
-                ax.plot(min_dt * 0.3, sst_speedup, 'D', color=color,
+                ax.plot(min_dt * 0.3, sst_speedup, 'D', color='#333333',
                         ms=7, zorder=5,
                         label=f'SST-Macro {nc:,}n ({sst_speedup:.3f}×)')
 
@@ -439,7 +438,7 @@ def main():
 
     print("\nGenerating figures...")
     fig_speedup(df_raps, sstmacro_timings)
-    fig_accuracy(df_raps)
+    fig_accuracy()
     fig_speedup_vs_dt(df_raps, sstmacro_timings)
 
     # Copy to main/

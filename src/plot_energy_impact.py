@@ -32,11 +32,11 @@ DPI  = 300
 
 plt.rcParams.update({
     'font.family':        'sans-serif',
-    'font.size':          10,
-    'axes.labelsize':     11,
-    'xtick.labelsize':    10,
-    'ytick.labelsize':    10,
-    'legend.fontsize':    9,
+    'font.size':          8,
+    'axes.labelsize':     8,
+    'xtick.labelsize':    7,
+    'ytick.labelsize':    7,
+    'legend.fontsize':    7,
     'legend.framealpha':  0.85,
     'legend.edgecolor':   '#cccccc',
     'axes.spines.top':    False,
@@ -54,9 +54,22 @@ ENERGY_PAL = ['#4DAF4A', '#1B9E77', '#D95F02', '#7570B3']  # green = ideal
 
 BAR_W = 0.52
 
+# System colors and labels for multi-system comparison figures
+SYS_COLORS_CMP = {
+    'frontier':   '#D95F02',   # orange
+    'lassen':     '#1B9E77',   # green
+    'bluewaters': '#7570B3',   # purple
+}
+SYS_SHORT = {
+    'frontier':   'Frontier',
+    'lassen':     'Lassen',
+    'bluewaters': 'Blue Waters',
+}
+
 _SYS_TAG = {
-    'frontier': 'Frontier (dragonfly)',
-    'lassen':   'Lassen (fat-tree)',
+    'frontier':   'Frontier (dragonfly)',
+    'lassen':     'Lassen (fat-tree)',
+    'bluewaters': 'Blue Waters (torus3d)',
 }
 
 # Track files written in the current run (used by save_main_figures).
@@ -74,11 +87,22 @@ def load_uc(system: str, uc_num: int):
         4: "uc4_energy_results.csv",
     }
     # Minimum expected rows per UC (all configs must be present to use that file).
-    # UC4 fat-tree (lassen): 3 variants (no_cong + minimal + ecmp; adaptive excluded).
+    # UC4 fat-tree (lassen): 4 variants (no_cong + minimal + ecmp + adaptive).
     # UC4 dragonfly (frontier): 4 variants (no_cong + minimal + ugal + valiant).
+    # UC4 torus3d (bluewaters): 2 variants (no_cong + dor_xyz).
+    # UC1 torus3d: 1 variant (dor_xyz only).
     _FAT_TREE_SYSTEMS = {'lassen', 'mit_supercloud', 'setonix', 'marconi100'}
-    uc4_rows = 3 if system in _FAT_TREE_SYSTEMS else 4
-    min_rows = {1: 3, 2: 3, 3: 3, 4: uc4_rows}
+    _TORUS3D_SYSTEMS  = {'bluewaters'}
+    if system in _TORUS3D_SYSTEMS:
+        uc4_rows = 2
+        uc1_rows = 1
+    elif system in _FAT_TREE_SYSTEMS:
+        uc4_rows = 4
+        uc1_rows = 3
+    else:
+        uc4_rows = 4
+        uc1_rows = 3
+    min_rows = {1: uc1_rows, 2: 3, 3: 3, 4: uc4_rows}
     csv_file = csv_names[uc_num]
     for suffix in [f"{system}_n1000_heavy", f"{system}_n1000"]:
         d = UC_BASE / suffix
@@ -86,6 +110,9 @@ def load_uc(system: str, uc_num: int):
         if p.exists():
             try:
                 df = pd.read_csv(p)
+                # Keep last occurrence per label (handles duplicate rows from
+                # multiple job runs appending to the same CSV).
+                df = df.drop_duplicates(subset=['label'], keep='last')
                 if len(df) < min_rows[uc_num]:
                     print(f"  [SKIP-INCOMPLETE] {suffix}/{csv_file}: "
                           f"{len(df)}/{min_rows[uc_num]} rows, trying next dir")
@@ -135,6 +162,7 @@ def _auto_fmt(v):
 _LABEL_ABBREV = {
     'no_congestion': 'no-cong',
     'fcfs+firstfit': 'fcfs+ff',
+    'adaptive': 'macro adaptive',
 }
 
 
@@ -172,7 +200,7 @@ def _bar_fig(labels, values, colors, ylabel, fname,
         else:
             ypos = v + v_range * 0.04
         ax.text(b.get_x() + b.get_width() / 2, ypos,
-                _auto_fmt(v), ha='center', va='bottom', fontsize=8)
+                _auto_fmt(v), ha='center', va='bottom', fontsize=7)
 
     # Explicit y-axis limits so annotations are never clipped
     if yscale == 'linear':
@@ -192,7 +220,7 @@ def _bar_fig(labels, values, colors, ylabel, fname,
     # System identifier tag — top-right corner in italic
     if sys_tag:
         ax.text(0.98, 0.97, sys_tag, transform=ax.transAxes,
-                ha='right', va='top', fontsize=7.5, style='italic',
+                ha='right', va='top', fontsize=6.5, style='italic',
                 color='#333',
                 bbox=dict(boxstyle='round,pad=0.2', fc='white', ec='#cccccc',
                           alpha=0.80, linewidth=0.6))
@@ -364,6 +392,336 @@ def fig_uc4_baseline(systems=('frontier', 'lassen')):
                  'Avg stall/pkt ratio', f'uc4_{sys}_stall.png')
 
 
+# ── Multi-system comparison figures ──────────────────────────────────────────
+
+def _get_val(df, uc_prefix, label_key, col):
+    """Return a scalar from df where label == '{uc_prefix}_{label_key}', or None."""
+    full = f"{uc_prefix}_{label_key}"
+    row = df[df['label'] == full]
+    if row.empty:
+        return None
+    return float(row.iloc[0][col])
+
+
+def _cmp_grouped_bar(groups, systems, values_by_sys, ylabel, fname,
+                     baseline=None, ymin=None, yscale='auto'):
+    """
+    Grouped bar chart: x-axis = groups (policies/strategies),
+    bars within each group = systems (one bar per system, system color).
+    yscale: 'auto' uses log when values span >10×, 'log', or 'linear'.
+    """
+    n_groups = len(groups)
+    n_sys    = len([s for s in systems if values_by_sys.get(s)])
+    w        = 0.22
+    pad      = 0.20   # gap between groups
+    fig, ax  = plt.subplots(figsize=(FIGW, FIGH))
+    x        = np.arange(n_groups) * (n_sys * w + pad)
+
+    all_vals = [v for vv in values_by_sys.values() if vv for v in vv if v is not None and v > 0]
+    v_max    = max(all_vals) if all_vals else 1.0
+    v_min    = min(all_vals) if all_vals else 1.0
+    use_log  = (yscale == 'log') or (yscale == 'auto' and v_max / max(v_min, 1e-9) > 10)
+
+    drawn = 0
+    for sys in systems:
+        vals = values_by_sys.get(sys)
+        if not vals:
+            continue
+        offset = (drawn - (n_sys - 1) / 2) * w
+        color  = SYS_COLORS_CMP[sys]
+        bars   = ax.bar(x + offset, vals, width=w, color=color,
+                        edgecolor='none', alpha=0.88, label=SYS_SHORT[sys])
+        ymin_v = ymin if ymin is not None else 0.0
+        v_rng  = v_max - ymin_v
+        for b, v in zip(bars, vals):
+            if v is None:
+                continue
+            ypos = v * 1.25 if use_log else v + v_rng * 0.04
+            ax.text(b.get_x() + b.get_width() / 2, ypos,
+                    _auto_fmt(v), ha='center', va='bottom', fontsize=6)
+        drawn += 1
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(_shorten_labels(groups), rotation=20, ha='right')
+    ax.set_ylabel(ylabel)
+    if baseline is not None:
+        ax.axhline(baseline, color='#444', ls='--', lw=1.2, alpha=0.8)
+
+    if use_log:
+        ax.set_yscale('log')
+        ax.set_ylim(bottom=v_min * 0.4, top=v_max * 4.0)
+    else:
+        ymin_v = ymin if ymin is not None else 0.0
+        v_rng  = v_max - ymin_v
+        ax.set_ylim(top=v_max + v_rng * 0.28)
+        if ymin is not None:
+            ax.set_ylim(bottom=ymin)
+
+    ax.legend(fontsize=6.5, loc='upper right', framealpha=0.85,
+              handlelength=1.0, handletextpad=0.4, borderpad=0.4)
+    ax.yaxis.grid(True, linestyle='--', alpha=0.25, linewidth=0.7, color='#888')
+    fig.tight_layout(pad=0.4)
+    out = OUT_DIR / fname
+    fig.savefig(out, dpi=DPI, bbox_inches='tight')
+    plt.close()
+    _generated_this_run.add(out)
+    print(f"  Saved {Path(fname).name}")
+
+
+def fig_comparison_routing(systems):
+    """
+    UC1: avg_job_slowdown for all routing variants, grouped by system.
+    Same layout as fig_comparison_energy — flat bars colored by system,
+    vertical separators between system groups.
+    Two metrics in two separate figures: slowdown and avg_congestion.
+    """
+    for metric, ylabel, fname_suffix in [
+        ('avg_job_slowdown',  'Avg job slowdown',       'slowdown'),
+        ('avg_congestion',    'Avg link overload ratio', 'congestion'),
+    ]:
+        entries    = []   # (sys, routing_label, value)
+        sys_spans  = {}   # sys → (start, end)
+        for sys in systems:
+            df = load_uc(sys, 1)
+            if df is None:
+                continue
+            start = len(entries)
+            for _, row in df.iterrows():
+                routing = row['label'].replace('UC1_', '')
+                entries.append((sys, routing, float(row[metric])))
+            sys_spans[sys] = (start, len(entries))
+
+        if not entries:
+            print(f"  [SKIP] UC1 comparison {metric}: no data")
+            continue
+
+        fig, ax = plt.subplots(figsize=(FIGW, FIGH))
+        x      = np.arange(len(entries))
+        colors = [SYS_COLORS_CMP[e[0]] for e in entries]
+        vals   = [e[2] for e in entries]
+        xlbls  = [_LABEL_ABBREV.get(e[1], e[1]) for e in entries]
+
+        # Baseline reference at 1.0 for slowdown
+        if metric == 'avg_job_slowdown':
+            ax.axhline(1.0, color='#444', ls='--', lw=1.1, alpha=0.7)
+
+        bars = ax.bar(x, vals, color=colors, edgecolor='none', alpha=0.88, width=0.55)
+
+        v_max = max(vals) if vals else 1.0
+        v_min = min(v for v in vals if v > 0) if vals else 1.0
+        # Use log scale when values span more than 5× (avoids tiny invisible bars)
+        use_log = (metric == 'avg_congestion') and (v_max / max(v_min, 1e-9) > 5)
+        ymin  = 0.98 if metric == 'avg_job_slowdown' else 0.0
+
+        for b, v in zip(bars, vals):
+            if use_log:
+                ypos = v * 1.25
+            else:
+                ypos = v + (v_max - ymin) * 0.04
+            ax.text(b.get_x() + b.get_width() / 2, ypos,
+                    _auto_fmt(v), ha='center', va='bottom', fontsize=6)
+
+        ax.set_xticks(x)
+        ax.set_xticklabels(xlbls, rotation=30, ha='right')
+        ax.set_ylabel(ylabel)
+        if use_log:
+            ax.set_yscale('log')
+            ax.set_ylim(bottom=v_min * 0.5, top=v_max * 3.5)
+        else:
+            ax.set_ylim(bottom=ymin, top=v_max + (v_max - ymin) * 0.28)
+
+        # System group labels and separators
+        for sys, (s, e) in sys_spans.items():
+            mid = (s + e - 1) / 2
+            label_y = (v_max * 2.8) if use_log else (v_max + (v_max - ymin) * 0.20)
+            ax.text(mid, label_y, SYS_SHORT[sys],
+                    ha='center', va='top', fontsize=6.5,
+                    color=SYS_COLORS_CMP[sys], fontweight='bold')
+            if e < len(entries):
+                ax.axvline(e - 0.5, color='#bbb', lw=0.8, ls='--')
+
+        ax.yaxis.grid(True, linestyle='--', alpha=0.25, linewidth=0.7, color='#888')
+        fig.tight_layout(pad=0.4)
+        fname = f'cmp_uc1_routing_{fname_suffix}.png'
+        out = OUT_DIR / fname
+        fig.savefig(out, dpi=DPI, bbox_inches='tight')
+        plt.close()
+        _generated_this_run.add(out)
+        print(f"  Saved {fname}")
+
+
+def fig_comparison_scheduling(systems):
+    """UC2: avg_job_slowdown by scheduling policy, grouped bars per system."""
+    policies   = ['fcfs', 'fcfs+firstfit', 'sjf']
+    values_by_sys = {}
+    for sys in systems:
+        df = load_uc(sys, 2)
+        if df is None:
+            continue
+        vals = [_get_val(df, 'UC2', p, 'avg_job_slowdown') for p in policies]
+        if any(v is not None for v in vals):
+            values_by_sys[sys] = vals
+
+    if not values_by_sys:
+        print("  [SKIP] UC2 comparison: no data")
+        return
+
+    _cmp_grouped_bar(policies, systems, values_by_sys,
+                     'Avg job slowdown', 'cmp_uc2_scheduling_slowdown.png',
+                     baseline=1.0, ymin=0.98)
+
+
+def fig_comparison_placement(systems):
+    """UC3: avg_stall_ratio by placement strategy, grouped bars per system."""
+    strategies    = ['contiguous', 'random', 'hybrid']
+    values_by_sys = {}
+    for sys in systems:
+        df = load_uc(sys, 3)
+        if df is None:
+            continue
+        vals = [_get_val(df, 'UC3', s, 'avg_stall_ratio') for s in strategies]
+        if any(v is not None for v in vals):
+            values_by_sys[sys] = vals
+
+    if not values_by_sys:
+        print("  [SKIP] UC3 comparison: no data")
+        return
+
+    _cmp_grouped_bar(strategies, systems, values_by_sys,
+                     'Avg stall/pkt ratio', 'cmp_uc3_placement_stall.png')
+
+
+def fig_comparison_energy(systems):
+    """
+    UC4: energy overhead % for all routing variants, grouped by system.
+    For each variant, shows standard load (lighter) and heavy load (solid) side by side.
+    """
+    UC4_CSV = "uc4_energy_results.csv"
+
+    def _load_raw(system, suffix):
+        p = UC_BASE / suffix / UC4_CSV
+        if not p.exists():
+            return None
+        try:
+            df = pd.read_csv(p)
+            return df if len(df) >= 2 else None
+        except Exception:
+            return None
+
+    def _overheads(df):
+        if df is None:
+            return {}
+        labels  = df['label'].tolist()
+        energies = df['total_energy_joules'].values
+        base_e  = energies[0]
+        return {lbl.replace('UC4_', ''): (e - base_e) / base_e * 100
+                for lbl, e in zip(labels[1:], energies[1:])}
+
+    # Collect (sys, routing, std_overhead, heavy_overhead) in order
+    entries   = []
+    sys_spans = {}
+
+    for sys in systems:
+        std_data   = _overheads(_load_raw(sys, f"{sys}_n1000"))
+        heavy_data = _overheads(_load_raw(sys, f"{sys}_n1000_heavy"))
+        routings = list(heavy_data.keys()) if heavy_data else list(std_data.keys())
+        if not routings:
+            continue
+        start = len(entries)
+        for r in routings:
+            entries.append((sys, r, std_data.get(r), heavy_data.get(r)))
+        sys_spans[sys] = (start, len(entries))
+
+    if not entries:
+        print("  [SKIP] UC4 energy comparison: no data")
+        return
+
+    all_vals = [v for _, _, s, h in entries for v in (s, h) if v is not None]
+    v_max = max(all_vals)
+
+    fig, ax = plt.subplots(figsize=(FIGW, FIGH))
+    n = len(entries)
+    x = np.arange(n)
+    w = 0.33
+
+    for i, (sys, routing, std_v, heavy_v) in enumerate(entries):
+        col = SYS_COLORS_CMP[sys]
+        if std_v is not None:
+            ax.bar(x[i] - w / 2, std_v, width=w, color=col,
+                   edgecolor='none', alpha=0.40)
+        if heavy_v is not None:
+            ax.bar(x[i] + w / 2, heavy_v, width=w, color=col,
+                   edgecolor='none', alpha=0.88)
+        # Smart label placement: offset when std and heavy are close
+        gap = v_max * 0.025
+        if std_v is not None and heavy_v is not None:
+            if abs(heavy_v - std_v) < v_max * 0.06:
+                # Values too close — stack labels vertically
+                lo, hi = min(std_v, heavy_v), max(heavy_v, std_v)
+                ax.text(x[i] - w / 2, lo + gap,
+                        _auto_fmt(std_v) + '%', ha='center', va='bottom',
+                        fontsize=5.5, color='#666')
+                ax.text(x[i] + w / 2, hi + gap + v_max * 0.055,
+                        _auto_fmt(heavy_v) + '%', ha='center', va='bottom',
+                        fontsize=5.5)
+            else:
+                ax.text(x[i] - w / 2, std_v + gap,
+                        _auto_fmt(std_v) + '%', ha='center', va='bottom',
+                        fontsize=5.5, color='#666')
+                ax.text(x[i] + w / 2, heavy_v + gap,
+                        _auto_fmt(heavy_v) + '%', ha='center', va='bottom',
+                        fontsize=5.5)
+        else:
+            if std_v is not None:
+                ax.text(x[i] - w / 2, std_v + gap,
+                        _auto_fmt(std_v) + '%', ha='center', va='bottom',
+                        fontsize=5.5, color='#666')
+            if heavy_v is not None:
+                ax.text(x[i] + w / 2, heavy_v + gap,
+                        _auto_fmt(heavy_v) + '%', ha='center', va='bottom',
+                        fontsize=5.5)
+
+    ax.set_xticks(x)
+    ax.set_xticklabels([_LABEL_ABBREV.get(e[1], e[1]) for e in entries],
+                       rotation=30, ha='right')
+    ax.set_ylabel('Energy overhead vs no-congestion (%)')
+    ax.set_ylim(top=v_max * 1.40)
+
+    # Vertical separators and system labels
+    for sys, (s, e) in sys_spans.items():
+        mid = (s + e - 1) / 2
+        ax.text(mid, v_max * 1.32, SYS_SHORT[sys],
+                ha='center', va='top', fontsize=6.5,
+                color=SYS_COLORS_CMP[sys], fontweight='bold')
+        if e < len(entries):
+            ax.axvline(e - 0.5, color='#bbb', lw=0.8, ls='--')
+
+    # Legend for load types — place inside plot below the Frontier bars
+    from matplotlib.patches import Patch
+    ax.legend(handles=[
+        Patch(facecolor='#888', alpha=0.40, label='Standard load'),
+        Patch(facecolor='#888', alpha=0.88, label='Heavy load'),
+    ], fontsize=6, loc='center left')
+
+    ax.yaxis.grid(True, linestyle='--', alpha=0.25, linewidth=0.7, color='#888')
+    fig.tight_layout(pad=0.4)
+    fig.subplots_adjust(right=0.97)  # ensure right-side system label not clipped
+    out = OUT_DIR / 'cmp_uc4_energy_overhead.png'
+    fig.savefig(out, dpi=DPI, bbox_inches='tight')
+    plt.close()
+    _generated_this_run.add(out)
+    print(f"  Saved cmp_uc4_energy_overhead.png")
+
+
+def fig_comparison(systems):
+    """Generate all multi-system comparison figures."""
+    print("\nMulti-system comparison figures:")
+    fig_comparison_routing(systems)
+    fig_comparison_scheduling(systems)
+    fig_comparison_placement(systems)
+    fig_comparison_energy(systems)
+
+
 # ── main figures curation ────────────────────────────────────────────────────
 
 # Each entry: (source_filename, dest_filename)
@@ -390,6 +748,12 @@ _MAIN_FIGURES = [
     # UC4: Energy — overhead % (the energy-tax thesis) + makespan extension
     ('uc4_{sys}_overhead.png',  'uc4_energy_overhead.png'),
     ('uc4_{sys}_makespan.png',  'uc4_energy_makespan.png'),
+    # Multi-system comparison figures (all 3 topologies)
+    ('cmp_uc1_routing_slowdown.png',    'cmp_uc1_routing_slowdown.png'),
+    ('cmp_uc1_routing_congestion.png',  'cmp_uc1_routing_congestion.png'),
+    ('cmp_uc2_scheduling_slowdown.png', 'cmp_uc2_scheduling_slowdown.png'),
+    ('cmp_uc3_placement_stall.png',     'cmp_uc3_placement_stall.png'),
+    ('cmp_uc4_energy_overhead.png',     'cmp_uc4_energy_overhead.png'),
 ]
 
 
@@ -463,6 +827,7 @@ def main():
     fig_placement(systems)
     fig_scheduling(systems)
     fig_uc4_baseline(systems)
+    fig_comparison(systems)
 
     save_main_figures(systems)
 

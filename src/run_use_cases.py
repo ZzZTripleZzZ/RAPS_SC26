@@ -113,12 +113,36 @@ FATTREE_K = {
     10_000:  36,     # 36^3/4 = 11664 hosts >= 10008
 }
 
-# Dragonfly (d groups, a routers/group, p hosts/router) => d*(d+1)*p hosts
-DRAGONFLY_PARAMS = {
-    100:     {"d": 10,  "a": 10,  "p": 1},   # 110
-    1_000:   {"d": 10,  "a": 10,  "p": 10},  # 1100
-    10_000:  {"d": 24,  "a": 24,  "p": 16},  # 9600
+# Circulant Dragonfly (Frontier-like): G groups, R routers/group, P hosts/router,
+# H inter-group links/router.  Port budget: P + (R-1) + H <= 64.
+CIRCULANT_PARAMS = {
+    100:     {"groups": 10,  "d": 5,   "p": 2,  "inter": 4},   # 10*5*2  = 100,  port=10
+    1_000:   {"groups": 32,  "d": 16,  "p": 2,  "inter": 14},  # 32*16*2 = 1024, port=31
+    10_000:  {"groups": 74,  "d": 32,  "p": 5,  "inter": 27},  # 74*32*5 = 11840,port=63
 }
+
+# Torus3D (x, y, z routers, hosts_per_router=2) => x*y*z*2 hosts
+TORUS3D_PARAMS = {
+    100:    {"x": 4,  "y": 4,  "z": 4},    # 4*4*4*2   = 128   >= 100
+    1_000:  {"x": 8,  "y": 8,  "z": 8},    # 8*8*8*2   = 1024  >= 1000
+    10_000: {"x": 18, "y": 18, "z": 16},   # 18*18*16*2 = 10368 >= 10000
+}
+
+
+def _torus3d_dims_for_nodes(n: int, hosts_per_router: int = 2) -> dict:
+    """Find x,y,z such that x*y*z*hosts_per_router >= n with balanced sizing."""
+    routers_needed = math.ceil(n / hosts_per_router)
+    cr = max(1, int(math.ceil(routers_needed ** (1 / 3))))
+    best = None
+    for x in range(max(1, cr - 2), cr + 3):
+        for y in range(max(1, cr - 2), cr + 3):
+            z = math.ceil(routers_needed / (x * y))
+            if x * y * z * hosts_per_router >= n:
+                waste = x * y * z - routers_needed
+                if best is None or waste < best[0]:
+                    best = (waste, x, y, z)
+    _, x, y, z = best
+    return {"x": x, "y": y, "z": z}
 
 
 def _fattree_k_for_nodes(n: int) -> int:
@@ -129,14 +153,22 @@ def _fattree_k_for_nodes(n: int) -> int:
     return k
 
 
-def _dragonfly_params_for_nodes(n: int) -> dict:
-    """Find d,a,p such that d*(d+1)*p >= n with balanced sizing."""
-    d = max(2, int(math.ceil(n ** (1/3))))
-    p = max(1, int(math.ceil(n / (d * (d + 1)))))
-    a = d  # balanced
-    while d * (d + 1) * p < n:
-        p += 1
-    return {"d": d, "a": a, "p": p}
+def _circulant_params_for_nodes(n: int) -> dict:
+    """Find G, R, P, H for circulant dragonfly with G*R*P >= n.
+
+    Port budget constraint: P + (R-1) + H <= 64.
+    Targets Frontier-like proportions: P=2, H ≈ R.
+    """
+    for P in [2, 3, 4, 5, 6]:
+        needed = math.ceil(n / P)
+        # Target G ≈ 2*R (Frontier: 74/32 ≈ 2.3)
+        R = max(4, int(math.sqrt(needed / 2)))
+        G = math.ceil(needed / R)
+        H = min(R - 1, 64 - P - (R - 1))
+        if H < 2:
+            continue
+        if G * R * P >= n and P + (R - 1) + H <= 64:
+            return {"groups": G, "d": R, "p": P, "inter": H}
 
 
 def _override_system_config_uc(system_name: str, node_count: int) -> SystemConfig:
@@ -162,12 +194,21 @@ def _override_system_config_uc(system_name: str, node_count: int) -> SystemConfi
             k = FATTREE_K[node_count]
             data["network"]["fattree_k"] = k
         elif topo == "dragonfly":
-            if node_count not in DRAGONFLY_PARAMS:
-                DRAGONFLY_PARAMS[node_count] = _dragonfly_params_for_nodes(node_count)
-            params = DRAGONFLY_PARAMS[node_count]
+            if node_count not in CIRCULANT_PARAMS:
+                CIRCULANT_PARAMS[node_count] = _circulant_params_for_nodes(node_count)
+            params = CIRCULANT_PARAMS[node_count]
+            data["network"]["dragonfly_groups"] = params["groups"]
             data["network"]["dragonfly_d"] = params["d"]
-            data["network"]["dragonfly_a"] = params["a"]
             data["network"]["dragonfly_p"] = params["p"]
+            data["network"]["dragonfly_inter"] = params["inter"]
+            data["network"].pop("dragonfly_a", None)  # not used for circulant
+        elif topo == "torus3d":
+            if node_count not in TORUS3D_PARAMS:
+                TORUS3D_PARAMS[node_count] = _torus3d_dims_for_nodes(node_count)
+            params = TORUS3D_PARAMS[node_count]
+            data["network"]["torus_x"] = params["x"]
+            data["network"]["torus_y"] = params["y"]
+            data["network"]["torus_z"] = params["z"]
 
     return SystemConfig.model_validate(data)
 
@@ -417,10 +458,12 @@ def compute_hop_counts(engine):
                             # hop counts than minimal routing.
                             D = getattr(net_model, 'dragonfly_d', 0)
                             A = getattr(net_model, 'dragonfly_a', 0)
+                            iga = getattr(net_model, 'inter_group_adj', None)
                             path = dragonfly_route(
                                 hosts[i], hosts[j_idx], routing, D, A,
                                 ugal_threshold=getattr(net_model, 'ugal_threshold', 2.0),
                                 valiant_bias=getattr(net_model, 'valiant_bias', 0.0),
+                                inter_group_adj=iga,
                             )
                         else:
                             path = nx.shortest_path(G, hosts[i], hosts[j_idx])
@@ -756,6 +799,7 @@ def run_simulation(
     label: str = "",
     node_count: int = None,
     autoshutdown: bool = False,
+    checkpoint_path: str = None,
 ) -> Optional[SimResult]:
     """
     Run a single DES simulation with full metric collection.
@@ -765,6 +809,11 @@ def run_simulation(
     node_count : int, optional
         If given, override the system config to simulate this many nodes
         (adjusts CDU layout, network topology params, etc.).
+    checkpoint_path : str, optional
+        If given, enables simulation-level checkpointing.  On start,
+        resumes from the checkpoint if it exists.  During execution,
+        saves a checkpoint every 60 s of wall time so that SLURM
+        resubmit can pick up where the simulation left off.
     """
     config_dict = {
         'system': system,
@@ -799,29 +848,70 @@ def run_simulation(
             sys_cfg = _override_system_config_uc(system, node_count)
             sim_config._system_configs = [sys_cfg]
 
-        # Override routing
-        if routing and simulate_network:
+        # Override routing (not needed for torus3d: DOR_XYZ is the default
+        # and routing_algorithm field does not accept 'dor_xyz')
+        if routing and simulate_network and _get_topology(system) != 'torus3d':
             override_system_routing(sim_config, routing)
 
         engine = Engine(sim_config)
 
-        # Replace jobs with our prepared workload
-        engine.jobs = clone_jobs(jobs)
+        # Check for existing checkpoint to resume from
+        resuming = False
+        if checkpoint_path and Path(checkpoint_path).exists():
+            print(f"    [RESUME] Loading checkpoint: {checkpoint_path}")
+            engine.load_checkpoint(checkpoint_path)
+            resuming = True
+        else:
+            # Replace jobs with our prepared workload (fresh start only)
+            engine.jobs = clone_jobs(jobs)
 
         t_engine = time.perf_counter()
 
-        # Run simulation
+        # SIGTERM handler: save checkpoint before exit so SLURM resubmit can resume
+        import signal
+        _terminated = False
+        _prev_handler = signal.getsignal(signal.SIGTERM)
+        def _on_sigterm(signum, frame):
+            nonlocal _terminated
+            _terminated = True
+            if checkpoint_path:
+                print(f"    [SIGTERM] Saving checkpoint: {checkpoint_path}")
+                engine.save_checkpoint(checkpoint_path)
+            # Restore previous handler and re-raise
+            signal.signal(signal.SIGTERM, _prev_handler)
+            raise SystemExit(99)
+        if checkpoint_path:
+            signal.signal(signal.SIGTERM, _on_sigterm)
+
+        # Run simulation with periodic checkpointing
         tick_count = 0
-        for tick_data in engine.run_simulation(autoshutdown=autoshutdown):
-            tick_count += 1
+        _last_ckpt_wall = t_engine
+        _CKPT_INTERVAL = 60.0  # save checkpoint every 60s of wall time
+        try:
+            for tick_data in engine.run_simulation(autoshutdown=autoshutdown,
+                                                   resume=resuming):
+                tick_count += 1
+                # Periodic checkpoint
+                if checkpoint_path:
+                    now = time.perf_counter()
+                    if now - _last_ckpt_wall >= _CKPT_INTERVAL:
+                        engine.save_checkpoint(checkpoint_path)
+                        _last_ckpt_wall = now
+        finally:
+            # Restore signal handler
+            if checkpoint_path:
+                signal.signal(signal.SIGTERM, _prev_handler)
+
+        # Simulation completed — remove checkpoint
+        if checkpoint_path and Path(checkpoint_path).exists():
+            Path(checkpoint_path).unlink()
 
         t_end = time.perf_counter()
         sim_time = t_end - t_engine
         total_time = t_end - t_start
-        # tick_count = number of outer loop iterations in run_simulation (one per
-        # simulated second, regardless of delta_t). delta_t only controls how often
-        # tick() is called, not how fast the outer loop advances.
-        simulated_seconds = tick_count
+        # Use engine.current_timestep for total simulated seconds (correct on resume).
+        # tick_count only reflects ticks from THIS run segment.
+        simulated_seconds = engine.current_timestep
         speedup = simulated_seconds / sim_time if sim_time > 0 else float('inf')
 
         # Collect network stats
@@ -880,8 +970,10 @@ def run_simulation(
             power_history = powers_kw
             avg_power = float(np.mean(powers_kw)) * 1000  # Convert kW to W
             peak_power = float(max(powers_kw)) * 1000
-            # Energy in joules: sum(power_kw) * delta_t * 1000 (kW to W)
-            total_energy = sum(powers_kw) * delta_t * 1000
+            # Energy in joules: avg_power (W) * simulated_seconds (s).
+            # Avoids under-counting when dt=1 and power is only sampled every
+            # POWER_UPDATE_FREQ seconds (power samples represent longer intervals).
+            total_energy = avg_power * simulated_seconds
 
         # Power decomposition (static vs dynamic)
         power_decomp = compute_power_decomposition(engine)
@@ -1014,15 +1106,20 @@ def _all_routing_algos_for_system(system: str) -> List[str]:
     topo = _get_topology(system)
     if topo == "dragonfly":
         return ["minimal", "ugal", "valiant"]
+    elif topo == "torus3d":
+        return ["dor_xyz"]
     else:  # fat-tree
         return ["minimal", "ecmp", "adaptive"]
 
 
-def _adaptive_routing_for_system(system: str) -> str:
-    """Return the best adaptive routing algorithm for a system's topology."""
+def _adaptive_routing_for_system(system: str) -> Optional[str]:
+    """Return the best adaptive routing algorithm for a system's topology.
+    Returns None for topologies with no adaptive routing (e.g. torus3d)."""
     topo = _get_topology(system)
     if topo == "dragonfly":
         return "ugal"
+    elif topo == "torus3d":
+        return None
     else:
         return "adaptive"
 
@@ -1328,7 +1425,8 @@ def run_uc3_placement(jobs, system, duration_minutes, node_count=None, delta_t=1
 # ==========================================
 
 def run_uc4_energy(jobs, system, duration_minutes, node_count=None, delta_t=1,
-                   resume_csv=None, done_labels=None, until_complete=True, **kwargs):
+                   resume_csv=None, done_labels=None, until_complete=True,
+                   checkpoint_dir=None, **kwargs):
     """
     UC4: Quantify the energy cost of network congestion.
 
@@ -1338,19 +1436,17 @@ def run_uc4_energy(jobs, system, duration_minutes, node_count=None, delta_t=1,
 
     When congestion dilates job runtime, static power (leakage) continues
     to accumulate even though dynamic work is stalled — the "Energy Tax."
+
+    checkpoint_dir : str, optional
+        Directory for simulation-level checkpoints.  Enables resuming
+        long-running variants (e.g. adaptive routing) across SLURM
+        resubmissions.
     """
     print("\n" + "=" * 60)
     print("UC4: Energy Cost of Congestion")
     print("=" * 60)
 
     routing_algos = _all_routing_algos_for_system(system)
-
-    # For fat-tree systems (e.g. lassen), 'adaptive' routing behaves like 'ecmp' under
-    # block allocation (near-zero inter-switch traffic).  Excluding it avoids an
-    # extra ~88-min SLURM job while keeping the scientific comparison meaningful.
-    if _get_topology(system) != 'dragonfly':
-        adaptive_algo = _adaptive_routing_for_system(system)
-        routing_algos = [a for a in routing_algos if a != adaptive_algo]
 
     # Build experiment configs: baseline (no network) + each routing algo
     configs = [('no_congestion', None, False)]  # (label, routing, simulate_network)
@@ -1372,6 +1468,12 @@ def run_uc4_energy(jobs, system, duration_minutes, node_count=None, delta_t=1,
         if until_complete:
             desc += f" [until-complete, budget={budget}min]"
         print(f"\n  Running: {desc}...")
+        # Build checkpoint path for long-running variants
+        ckpt = None
+        if checkpoint_dir and sim_net:
+            Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
+            ckpt = str(Path(checkpoint_dir) / f"{label}.ckpt")
+
         result = run_simulation(
             jobs=jobs,
             system=system,
@@ -1384,6 +1486,7 @@ def run_uc4_energy(jobs, system, duration_minutes, node_count=None, delta_t=1,
             label=label,
             node_count=node_count,
             autoshutdown=until_complete,
+            checkpoint_path=ckpt,
         )
         if result:
             results[config_label] = result
@@ -1915,7 +2018,7 @@ def regenerate_plots_from_csv(output_dir, figures_dir, uc_to_run):
 def main():
     parser = argparse.ArgumentParser(
         description='RAPS Use Case Evaluation (4 operational scenarios)')
-    parser.add_argument('--system', default='lassen', choices=['lassen', 'frontier'],
+    parser.add_argument('--system', default='lassen', choices=['lassen', 'frontier', 'bluewaters'],
                         help='System to simulate (default: lassen)')
     parser.add_argument('--duration', type=int, default=60,
                         help='Simulation duration in minutes (default: 60)')
@@ -2050,6 +2153,8 @@ def main():
             print(f"\n[SKIP] UC1 already complete ({uc1_csv} has {num_routing_algos} variants)")
         else:
             uc1_path = output_dir / uc1_csv
+            if args.force and uc1_path.exists():
+                uc1_path.unlink()
             resume_path = None if args.force else uc1_path
             done = _load_done_labels(resume_path)
             if done:
@@ -2070,6 +2175,8 @@ def main():
             print(f"\n[SKIP] UC2 already complete ({uc2_csv} has 3 variants)")
         else:
             uc2_path = output_dir / uc2_csv
+            if args.force and uc2_path.exists():
+                uc2_path.unlink()
             resume_path = None if args.force else uc2_path
             done = _load_done_labels(resume_path)
             if done:
@@ -2091,6 +2198,8 @@ def main():
             print(f"\n[SKIP] UC3 already complete ({uc3_csv} has 3 variants)")
         else:
             uc3_path = output_dir / uc3_csv
+            if args.force and uc3_path.exists():
+                uc3_path.unlink()
             resume_path = None if args.force else uc3_path
             done = _load_done_labels(resume_path)
             if done:
@@ -2105,25 +2214,26 @@ def main():
                 plot_uc3_speedup_vs_comm(results, figures_dir / "uc3_speedup_vs_comm.png")
 
     # UC4: Energy Cost (no_congestion + each routing algo).
-    # For fat-tree systems, adaptive routing ≈ ecmp so it is excluded from UC4
-    # (see run_uc4_energy), giving 1 + num_routing_algos - 1 = num_routing_algos variants.
-    if _get_topology(args.system) != 'dragonfly':
-        num_uc4_variants = num_routing_algos  # no_congestion + (all algos minus adaptive)
-    else:
-        num_uc4_variants = 1 + num_routing_algos  # no_congestion + all algos
+    # All routing algos are included; checkpoint support handles long-running variants.
+    _uc4_routing = list(_all_routing_algos_for_system(args.system))
+    num_uc4_variants = 1 + len(_uc4_routing)  # +1 for no_congestion baseline
     uc4_csv = "uc4_energy_results.csv"
     if 4 in uc_to_run:
         if _uc_complete(uc4_csv, num_uc4_variants):
             print(f"\n[SKIP] UC4 already complete ({uc4_csv} has {num_uc4_variants} variants)")
         else:
             uc4_path = output_dir / uc4_csv
+            if args.force and uc4_path.exists():
+                uc4_path.unlink()
             resume_path = None if args.force else uc4_path
             done = _load_done_labels(resume_path)
             if done:
                 print(f"\n[RESUME] UC4: {len(done)} variant(s) already done, resuming...")
+            ckpt_dir = str(output_dir / "checkpoints")
             results = run_uc4_energy(
                 jobs, args.system, args.duration,
-                resume_csv=uc4_path, done_labels=done, **uc_kwargs)
+                resume_csv=uc4_path, done_labels=done,
+                checkpoint_dir=ckpt_dir, **uc_kwargs)
             all_results['uc4'] = results
 
             if results and not args.no_plots:

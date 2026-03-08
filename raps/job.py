@@ -26,8 +26,9 @@ class JobState(Enum):
 
 class CommunicationPattern(Enum):
     """Communication patterns for network traffic modeling."""
-    ALL_TO_ALL = "all-to-all"      # Every node sends to every other node
-    STENCIL_3D = "stencil-3d"      # Each node sends to 6 neighbors (±x, ±y, ±z)
+    ALL_TO_ALL  = "all-to-all"    # Every node sends to every other node
+    STENCIL_3D  = "stencil-3d"   # Each node sends to 6 neighbors (±x, ±y, ±z)
+    RANDOM_RING = "random-ring"   # Bidirectional ring (matches GPCNeT RR test)
 
 
 # Standard message sizes for testing (in bytes)
@@ -47,6 +48,8 @@ def normalize_comm_pattern(value):
             return CommunicationPattern.ALL_TO_ALL
         if key in ("stencil", "stencil-3d", "stencil_3d", "nearest-neighbor", "nearest_neighbor", "nn"):
             return CommunicationPattern.STENCIL_3D
+        if key in ("random-ring", "random_ring", "ring", "rr"):
+            return CommunicationPattern.RANDOM_RING
     raise ValueError(f"Unsupported comm_pattern: {value}")
 
 

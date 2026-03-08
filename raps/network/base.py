@@ -185,6 +185,56 @@ def all_to_all_paths(G, hosts, apsp=None):
     return paths
 
 
+def compute_random_ring_coefficients(G, job_hosts, apsp=None, seed=None):
+    """
+    Compute link-load coefficients for RANDOM_RING pattern.
+
+    Models GPCNeT's "RR Two-sided BW" test: a random permutation of all N
+    nodes forms a ring; each node communicates bidirectionally with its left
+    and right neighbors in the permutation.
+
+    Each node sends tx_volume_bytes total, split equally (1/2 each) to its
+    two ring neighbors — matching the per_peer_coeff convention used in
+    compute_all_to_all_coefficients (where coeff = 1/(N-1) per peer).
+    """
+    N = len(job_hosts)
+    if N < 2:
+        return {}
+
+    rng = np.random.default_rng(seed if seed is not None
+                                else abs(hash(tuple(job_hosts))) % (2**31))
+    perm = rng.permutation(N)
+    ordered = [job_hosts[i] for i in perm]
+
+    edge_set = set(G.edges())
+    coeffs = {}
+    per_pair = 0.5  # each node sends 1/2 of tx_volume to each of 2 ring neighbors
+
+    for i in range(N):
+        src = ordered[i]
+        dst = ordered[(i + 1) % N]
+        if src == dst:
+            continue
+        if apsp is not None:
+            path = apsp[src][dst]
+        else:
+            try:
+                path = nx.shortest_path(G, src, dst)
+            except Exception:
+                continue
+        for u, v in zip(path, path[1:]):
+            edge = (u, v) if (u, v) in edge_set else (v, u)
+            coeffs[edge] = coeffs.get(edge, 0.0) + per_pair
+
+    return coeffs
+
+
+def link_loads_for_job_ring(G, job_hosts, tx_volume_bytes, apsp=None, seed=None):
+    """Link loads for RANDOM_RING communication pattern."""
+    coeffs = compute_random_ring_coefficients(G, job_hosts, apsp=apsp, seed=seed)
+    return {edge: coeff * tx_volume_bytes for edge, coeff in coeffs.items()}
+
+
 def link_loads_for_job(G, job_hosts, tx_volume_bytes, apsp=None):
     """
     Distribute tx_volume_bytes from each host equally to all its peers;
@@ -212,16 +262,16 @@ def compute_all_to_all_coefficients(G, job_hosts, apsp=None):
 
     per_peer_coeff = 1.0 / (N - 1)
 
-    # Build paths grouped by source — avoids the O(N^3) scan in the
-    # original code that iterated *all* N^2 paths for *each* of N sources.
+    # Batch BFS: one single-source traversal per unique source node covers all
+    # destinations in one pass — O(N_unique * (V+E)) instead of O(N^2 * (V+E)).
+    unique_srcs = list(dict.fromkeys(job_hosts))
+    src_paths = {src: nx.single_source_shortest_path(G, src) for src in unique_srcs}
+
     for i in range(N):
         src = job_hosts[i]
         for j in range(i + 1, N):
             dst = job_hosts[j]
-            if apsp is not None:
-                p = apsp[src][dst]
-            else:
-                p = nx.shortest_path(G, src, dst)
+            p = src_paths[src].get(dst) or nx.shortest_path(G, src, dst)
             for u, v in zip(p, p[1:]):
                 edge = (u, v) if (u, v) in edge_set else (v, u)
                 coeffs[edge] = coeffs.get(edge, 0.0) + per_peer_coeff
@@ -445,10 +495,10 @@ def get_effective_traffic(tx_volume_bytes, job, num_hosts):
 
     # Calculate number of peers based on pattern
     if comm_pattern == CommunicationPattern.STENCIL_3D:
-        # Stencil has up to 6 neighbors
         num_peers = min(6, num_hosts - 1)
+    elif comm_pattern == CommunicationPattern.RANDOM_RING:
+        num_peers = min(2, num_hosts - 1)
     else:
-        # All-to-all: everyone talks to everyone
         num_peers = max(1, num_hosts - 1)
 
     return apply_message_size_overhead(
@@ -507,6 +557,7 @@ def link_loads_for_pattern(
             link_loads=link_loads,
             ugal_threshold=dragonfly_params.get('ugal_threshold', 2.0),
             valiant_bias=dragonfly_params.get('valiant_bias', 0.0),
+            inter_group_adj=dragonfly_params.get('inter_group_adj'),
         )
 
     # Handle adaptive routing for Fat-tree
@@ -523,6 +574,8 @@ def link_loads_for_pattern(
     # Standard routing (shortest path)
     if comm_pattern == CommunicationPattern.STENCIL_3D:
         return link_loads_for_job_stencil_3d(G, job_hosts, tx_volume_bytes, apsp=apsp)
+    elif comm_pattern == CommunicationPattern.RANDOM_RING:
+        return link_loads_for_job_ring(G, job_hosts, tx_volume_bytes, apsp=apsp)
     else:
         # Default to all-to-all
         return link_loads_for_job(G, job_hosts, tx_volume_bytes, apsp=apsp)
@@ -601,8 +654,20 @@ def simulate_inter_job_congestion(network_model, jobs, legacy_cfg, debug=False, 
         print("[WARN] Network graph is not defined. Skipping congestion simulation.")
         return 0.0
 
-    total_loads = {tuple(sorted(edge)): 0.0 for edge in network_model.net_graph.edges()}
+    # Use numpy array accumulation when the network model has integer edge indexing
+    # (all new-style NetworkModel instances).  Fall back to dict for legacy callers.
+    use_arr = hasattr(network_model, '_n_edges') and network_model._n_edges > 0
+    if use_arr:
+        import numpy as _np
+        total_loads_arr = _np.zeros(network_model._n_edges, dtype=_np.float64)
+        e2i = network_model._edge_to_idx
+        total_loads = None  # built lazily at the end for get_link_util_stats
+    else:
+        total_loads = {tuple(sorted(edge)): 0.0 for edge in network_model.net_graph.edges()}
+
     trace_quanta = jobs[0].trace_quanta if jobs else 0
+
+    is_adaptive = routing_algorithm in ('ugal', 'valiant', 'ecmp', 'adaptive')
 
     for job in jobs:
         # Assuming job.current_run_time is 0 for this static simulation
@@ -620,13 +685,18 @@ def simulate_inter_job_congestion(network_model, jobs, legacy_cfg, debug=False, 
 
         # Fast path: reuse cached coefficients if available.
         # Only valid for deterministic (minimal) routing; adaptive routing is not cached.
-        is_adaptive = routing_algorithm in ('ugal', 'valiant', 'ecmp', 'adaptive')
         if not is_adaptive and job_coeffs_cache is not None and job.id in job_coeffs_cache:
-            coeffs = job_coeffs_cache[job.id]
-            for edge, coeff in coeffs.items():
-                edge_key = tuple(sorted(edge))
-                if edge_key in total_loads:
-                    total_loads[edge_key] += coeff * effective_tx
+            cached = job_coeffs_cache[job.id]
+            if use_arr and isinstance(cached, tuple):
+                # New format: (idx_arr, coeff_arr) numpy arrays — no Python loop.
+                idx_arr, coeff_arr = cached
+                total_loads_arr[idx_arr] += coeff_arr * effective_tx
+            else:
+                # Legacy dict format fallback.
+                for edge, coeff in cached.items():
+                    edge_key = tuple(sorted(edge))
+                    if edge_key in total_loads:
+                        total_loads[edge_key] += coeff * effective_tx
             continue
 
         # Slow path: compute link loads from scratch using the actual routing algorithm.
@@ -636,6 +706,11 @@ def simulate_inter_job_congestion(network_model, jobs, legacy_cfg, debug=False, 
         if network_model.topology in ("fat-tree", "dragonfly"):
             # Pass accumulated total_loads as link_loads so adaptive routing
             # (UGAL, adaptive fat-tree) can make informed path decisions.
+            link_loads_view = (
+                {network_model._idx_to_edge[i]: float(total_loads_arr[i])
+                 for i in range(network_model._n_edges) if total_loads_arr[i] > 0}
+                if use_arr else total_loads
+            )
             job_loads = link_loads_for_pattern(
                 network_model.net_graph,
                 host_list,
@@ -644,7 +719,7 @@ def simulate_inter_job_congestion(network_model, jobs, legacy_cfg, debug=False, 
                 routing_algorithm=routing_algorithm,
                 dragonfly_params=dragonfly_params,
                 fattree_params=fattree_params,
-                link_loads=total_loads,
+                link_loads=link_loads_view,
                 apsp=apsp,
             )
 
@@ -655,12 +730,27 @@ def simulate_inter_job_congestion(network_model, jobs, legacy_cfg, debug=False, 
             else:
                 job_loads = link_loads_for_job_torus(network_model.net_graph, network_model.meta, host_list, effective_tx)
 
-        for edge, load in job_loads.items():
-            edge_key = tuple(sorted(edge))
-            if edge_key in total_loads:
-                total_loads[edge_key] += load
+        if use_arr:
+            for edge, load in job_loads.items():
+                idx = e2i.get(tuple(sorted(edge)))
+                if idx is not None:
+                    total_loads_arr[idx] += load
+        else:
+            for edge, load in job_loads.items():
+                edge_key = tuple(sorted(edge))
+                if edge_key in total_loads:
+                    total_loads[edge_key] += load
 
     max_throughput = max_throughput_per_tick(legacy_cfg, trace_quanta)
+
+    if use_arr:
+        # Build sparse dict only for get_link_util_stats (called once per tick).
+        total_loads = {
+            network_model._idx_to_edge[i]: float(total_loads_arr[i])
+            for i in range(network_model._n_edges)
+            if total_loads_arr[i] > 0.0
+        }
+
     net_stats = get_link_util_stats(total_loads, max_throughput)
 
     return net_stats

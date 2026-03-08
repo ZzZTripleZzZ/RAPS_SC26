@@ -672,9 +672,10 @@ class Engine:
                 if nm.topology == 'dragonfly':
                     _dragonfly_params = {
                         'd': getattr(nm, 'dragonfly_d', 0),
-                        'a': getattr(nm, 'dragonfly_a', 0),
+                        'a': getattr(nm, 'dragonfly_a', None),
                         'ugal_threshold': getattr(nm, 'ugal_threshold', 2.0),
                         'valiant_bias': getattr(nm, 'valiant_bias', 0.0),
+                        'inter_group_adj': getattr(nm, 'inter_group_adj', None),
                     }
                 elif nm.topology == 'fat-tree':
                     _fattree_params = {
@@ -949,9 +950,9 @@ class Engine:
             'node_occupancy_history':   list(self.node_occupancy_history),
 
             # -- network model caches (optional, speeds up resume) --
-            'net_global_link_loads':    dict(self.network_model.global_link_loads)
+            'net_global_link_loads':    self.network_model._get_loads_dict()
                                             if self.network_model
-                                               and hasattr(self.network_model, 'global_link_loads')
+                                               and hasattr(self.network_model, '_get_loads_dict')
                                             else None,
         }
 
@@ -1016,7 +1017,16 @@ class Engine:
 
         # -- network model caches --
         if state.get('net_global_link_loads') and self.network_model:
-            self.network_model.global_link_loads = state['net_global_link_loads']
+            nm = self.network_model
+            saved = state['net_global_link_loads']
+            if nm._uses_adaptive_routing():
+                nm.global_link_loads = saved
+            elif hasattr(nm, '_edge_to_idx') and saved:
+                # Restore into the numpy array used by the fast path.
+                for edge_key, val in saved.items():
+                    idx = nm._edge_to_idx.get(edge_key)
+                    if idx is not None:
+                        nm._global_loads_arr[idx] = val
 
     def run_simulation(self, autoshutdown=False, resume=False):
         """Generator that yields after each simulation tick.

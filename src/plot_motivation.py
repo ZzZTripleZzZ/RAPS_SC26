@@ -51,11 +51,11 @@ DT_ORDER     = [0.1, 1.0, 10.0, 60.0, 300.0, 600.0]
 
 plt.rcParams.update({
     'font.family':        'sans-serif',
-    'font.size':          10,
-    'axes.labelsize':     11,
-    'xtick.labelsize':    10,
-    'ytick.labelsize':    10,
-    'legend.fontsize':    8,
+    'font.size':          8,
+    'axes.labelsize':     8,
+    'xtick.labelsize':    7,
+    'ytick.labelsize':    7,
+    'legend.fontsize':    7,
     'legend.framealpha':  0.85,
     'legend.edgecolor':   '#cccccc',
     'axes.spines.top':    False,
@@ -151,7 +151,7 @@ def plot_speed(csv_path: Path):
     ax.axhline(1.0, color='#cc4444', lw=1.2, ls='-', alpha=0.7, zorder=2)
     ax.text(min(dt_vals) * 1.18, 0.72,
             "Real-time boundary",
-            fontsize=7.5, color='#cc4444', va='top', alpha=0.9)
+            fontsize=7, color='#cc4444', va='top', alpha=0.9)
     ax.text(min(dt_vals) * 1.18, 0.28,
             "← packet-level simulators\n   (SST, NS-3, CODES)",
             fontsize=7, color='#aa3333', va='top', alpha=0.75,
@@ -242,13 +242,13 @@ def plot_congestion():
                 color='#444', va='bottom', ha='left', alpha=0.8)
 
     ax_bar.set_xticks(x)
-    ax_bar.set_xticklabels(days, rotation=25, ha='right', fontsize=9)
+    ax_bar.set_xticklabels(days, rotation=25, ha='right', fontsize=7)
     ax_bar.set_ylabel("Peak max link utilization (×)")
     ax_bar.set_yscale("log")
     ax_bar.yaxis.set_major_formatter(ticker.FuncFormatter(lambda v, _: f"{v:,.0f}×"))
-    ax_bar.set_title("(a) Daily peak congestion — Lassen, Aug 2019", fontsize=9,
+    ax_bar.set_title("(a) Daily peak congestion — Lassen, Aug 2019", fontsize=7,
                      pad=4)
-    ax_bar.legend(fontsize=8, loc='lower right', framealpha=0.9)
+    ax_bar.legend(fontsize=7, loc='lower right', framealpha=0.9)
     _ygrid(ax_bar)
 
     # Annotate peak bar — place inside the tallest stencil bar
@@ -273,13 +273,13 @@ def plot_congestion():
         if pct > 4:
             ax_pie.text(left + pct / 2, y_pos[0],
                         f"{pct:.0f}%", ha='center', va='center',
-                        fontsize=7.5, color='white', fontweight='bold')
+                        fontsize=7, color='white', fontweight='bold')
         left += pct
 
     # Legend patches
     patches = [mpatches.Patch(color=c, alpha=0.88, label=f"{cat}\n({cnt:,})")
                for cat, cnt, c in zip(categories, counts, colors_pie)]
-    ax_pie.legend(handles=patches, fontsize=7.5, loc='lower center',
+    ax_pie.legend(handles=patches, fontsize=7, loc='lower center',
                   bbox_to_anchor=(0.5, -0.52), ncol=3, framealpha=0.9,
                   handlelength=1.0, handleheight=0.9)
 
@@ -288,7 +288,7 @@ def plot_congestion():
     ax_pie.set_xticks([0, 25, 50, 75, 100])
     ax_pie.xaxis.set_major_formatter(ticker.FuncFormatter(lambda v, _: f"{v:.0f}%"))
     ax_pie.set_yticks([])
-    ax_pie.set_title(f"(b) Job fate\n({n_total:,} jobs, 1 week)", fontsize=9, pad=4)
+    ax_pie.set_title(f"(b) Job fate\n({n_total:,} jobs, 1 week)", fontsize=7, pad=4)
     ax_pie.spines['left'].set_visible(False)
 
     # Summary stats box
@@ -297,7 +297,7 @@ def plot_congestion():
                  f"Mean peak util: {d['mean_a2a']:.0f}× (A2A)\n"
                  f"Job–congestion corr.: r ≈ {r:.2f}")
     ax_bar.text(0.02, 0.97, stats_txt,
-                transform=ax_bar.transAxes, fontsize=7.5,
+                transform=ax_bar.transAxes, fontsize=7,
                 va='top', ha='left',
                 bbox=dict(boxstyle='round,pad=0.35', fc='white',
                           ec='#cccccc', alpha=0.92))
@@ -370,7 +370,7 @@ def plot_sim_comparison():
         ax.annotate(name,
                     xy=(sp, fid),
                     xytext=(dx, dy), textcoords='offset points',
-                    fontsize=7.5 if ours else 7,
+                    fontsize=7 if ours else 7,
                     color=color,
                     fontweight='bold' if ours else 'normal',
                     va='center',
@@ -384,7 +384,7 @@ def plot_sim_comparison():
     ax.set_ylim(0.0, 3.3)
     ax.set_yticks([0, 1, 2, 3])
     ax.set_yticklabels(["None", "Low\n(analytical)", "Medium\n(flow-level)", "High\n(packet-level)"],
-                       fontsize=8)
+                       fontsize=7)
     def _speed_fmt(x, _):
         if x <= 0:
             return ""
@@ -397,7 +397,7 @@ def plot_sim_comparison():
         return f"{x:,.0f}×"
     ax.xaxis.set_major_formatter(ticker.FuncFormatter(_speed_fmt))
 
-    ax.set_title("Network simulator positioning", fontsize=9, pad=4)
+    ax.set_title("Network simulator positioning", fontsize=7, pad=4)
     _xgrid(ax)
     _ygrid(ax)
 

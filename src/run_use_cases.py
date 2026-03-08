@@ -1125,13 +1125,17 @@ def _adaptive_routing_for_system(system: str) -> Optional[str]:
 
 
 def run_uc1_routing(jobs, system, duration_minutes, node_count=None, delta_t=1,
-                    resume_csv=None, done_labels=None, **kwargs):
+                    resume_csv=None, done_labels=None, checkpoint_dir=None, **kwargs):
     """
     UC1: Compare ALL routing algorithms for the system's topology.
 
     Evaluates the impact of routing policies on the bully effect.
     - Dragonfly (Frontier): minimal, ugal, valiant
     - Fat-tree (Lassen): minimal, ecmp, adaptive
+
+    checkpoint_dir : str, optional
+        Directory for simulation-level checkpoints.  Enables resuming
+        long-running variants (e.g. ugal/adaptive) across SLURM resubmissions.
     """
     print("\n" + "=" * 60)
     print("UC1: Adaptive Routing and Congestion Mitigation")
@@ -1150,6 +1154,10 @@ def run_uc1_routing(jobs, system, duration_minutes, node_count=None, delta_t=1,
             print(f"\n  [SKIP] routing={routing} (already saved)")
             continue
         print(f"\n  Running with routing={routing}...")
+        ckpt = None
+        if checkpoint_dir:
+            Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
+            ckpt = str(Path(checkpoint_dir) / f"{label}.ckpt")
         result = run_simulation(
             jobs=jobs,
             system=system,
@@ -1161,6 +1169,7 @@ def run_uc1_routing(jobs, system, duration_minutes, node_count=None, delta_t=1,
             simulate_network=True,
             label=label,
             node_count=node_count,
+            checkpoint_path=ckpt,
         )
         if result:
             results[routing] = result
@@ -1206,13 +1215,17 @@ def run_uc1_routing(jobs, system, duration_minutes, node_count=None, delta_t=1,
 # ==========================================
 
 def run_uc2_scheduling(jobs, system, duration_minutes, node_count=None, delta_t=1,
-                       resume_csv=None, done_labels=None, **kwargs):
+                       resume_csv=None, done_labels=None, checkpoint_dir=None, **kwargs):
     """
     UC2: Compare scheduling policies under network interference.
 
     Compares FCFS (no backfill), FCFS+Easy backfill, FCFS+Firstfit backfill,
     and SJF. Under network congestion, runtime dilation disrupts scheduling
     reservations since actual job completion deviates from estimates.
+
+    checkpoint_dir : str, optional
+        Directory for simulation-level checkpoints.  Enables resuming
+        long-running variants across SLURM resubmissions.
     """
     print("\n" + "=" * 60)
     print("UC2: Scheduler Policy Optimization")
@@ -1237,6 +1250,10 @@ def run_uc2_scheduling(jobs, system, duration_minutes, node_count=None, delta_t=
             continue
         bf_str = f" + backfill={bf}" if bf else ""
         print(f"\n  Running with policy={policy}{bf_str}...")
+        ckpt = None
+        if checkpoint_dir:
+            Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
+            ckpt = str(Path(checkpoint_dir) / f"{label}.ckpt")
         result = run_simulation(
             jobs=jobs,
             system=system,
@@ -1249,6 +1266,7 @@ def run_uc2_scheduling(jobs, system, duration_minutes, node_count=None, delta_t=
             simulate_network=True,
             label=label,
             node_count=node_count,
+            checkpoint_path=ckpt,
         )
         if result:
             results[sched_label] = result
@@ -1315,13 +1333,17 @@ def run_uc2_scheduling(jobs, system, duration_minutes, node_count=None, delta_t=
 # ==========================================
 
 def run_uc3_placement(jobs, system, duration_minutes, node_count=None, delta_t=1,
-                      resume_csv=None, done_labels=None, **kwargs):
+                      resume_csv=None, done_labels=None, checkpoint_dir=None, **kwargs):
     """
     UC3: Compare all node placement strategies.
 
     - Contiguous: keeps jobs within a single electrical group (Short Circuit)
     - Random: spreads jobs across the fabric
     - Hybrid: comm-intensive jobs get contiguous, others get random
+
+    checkpoint_dir : str, optional
+        Directory for simulation-level checkpoints.  Enables resuming
+        long-running variants across SLURM resubmissions.
     """
     print("\n" + "=" * 60)
     print("UC3: Topology-Aware Node Placement")
@@ -1339,6 +1361,10 @@ def run_uc3_placement(jobs, system, duration_minutes, node_count=None, delta_t=1
             print(f"\n  [SKIP] allocation={alloc} (already saved)")
             continue
         print(f"\n  Running with allocation={alloc}...")
+        ckpt = None
+        if checkpoint_dir:
+            Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
+            ckpt = str(Path(checkpoint_dir) / f"{label}.ckpt")
         result = run_simulation(
             jobs=jobs,
             system=system,
@@ -1350,6 +1376,7 @@ def run_uc3_placement(jobs, system, duration_minutes, node_count=None, delta_t=1
             simulate_network=True,
             label=label,
             node_count=node_count,
+            checkpoint_path=ckpt,
         )
         if result:
             results[alloc] = result
@@ -2129,6 +2156,9 @@ def main():
 
     all_results = {}
 
+    # Shared checkpoint directory for all UCs (labels are unique across UC1-4)
+    ckpt_dir = str(output_dir / "checkpoints")
+
     # Helper: check if a UC result CSV already exists with expected variants
     def _uc_complete(csv_name, expected_variants):
         """Return True if the CSV has rows for all expected UNIQUE variant labels."""
@@ -2161,7 +2191,8 @@ def main():
                 print(f"\n[RESUME] UC1: {len(done)} variant(s) already done, resuming...")
             results = run_uc1_routing(
                 jobs, args.system, args.duration,
-                resume_csv=uc1_path, done_labels=done, **uc_kwargs)
+                resume_csv=uc1_path, done_labels=done,
+                checkpoint_dir=ckpt_dir, **uc_kwargs)
             all_results['uc1'] = results
 
             if results and not args.no_plots:
@@ -2183,7 +2214,8 @@ def main():
                 print(f"\n[RESUME] UC2: {len(done)} variant(s) already done, resuming...")
             results = run_uc2_scheduling(
                 jobs, args.system, args.duration,
-                resume_csv=uc2_path, done_labels=done, **uc_kwargs)
+                resume_csv=uc2_path, done_labels=done,
+                checkpoint_dir=ckpt_dir, **uc_kwargs)
             all_results['uc2'] = results
 
             if results and not args.no_plots:
@@ -2206,7 +2238,8 @@ def main():
                 print(f"\n[RESUME] UC3: {len(done)} variant(s) already done, resuming...")
             results = run_uc3_placement(
                 jobs, args.system, args.duration,
-                resume_csv=uc3_path, done_labels=done, **uc_kwargs)
+                resume_csv=uc3_path, done_labels=done,
+                checkpoint_dir=ckpt_dir, **uc_kwargs)
             all_results['uc3'] = results
 
             if results and not args.no_plots:
@@ -2229,7 +2262,6 @@ def main():
             done = _load_done_labels(resume_path)
             if done:
                 print(f"\n[RESUME] UC4: {len(done)} variant(s) already done, resuming...")
-            ckpt_dir = str(output_dir / "checkpoints")
             results = run_uc4_energy(
                 jobs, args.system, args.duration,
                 resume_csv=uc4_path, done_labels=done,

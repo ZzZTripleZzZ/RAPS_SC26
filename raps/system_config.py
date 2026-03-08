@@ -152,9 +152,11 @@ class SystemNetworkConfig(RAPSBaseModel):
 
     fattree_k: int | None = None
 
+    dragonfly_groups: int | None = None
     dragonfly_d: int | None = None
     dragonfly_a: int | None = None
     dragonfly_p: int | None = None
+    dragonfly_inter: int | None = None
 
     torus_x: int | None = None
     torus_y: int | None = None

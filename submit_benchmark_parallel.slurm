@@ -10,10 +10,10 @@
 #SBATCH --mail-user=zhangzifan@ornl.gov
 #SBATCH --signal=B:USR1@180
 
-# Resume 6 missing n10000 dt0.1 experiments sequentially on a single node.
-# Sequential (--workers 1) avoids mp.spawn crashes seen with parallel workers.
-# On timeout: SIGUSR1 → bash trap → SIGTERM to Python → Python saves checkpoint
-#   → 60s sleep → SIGKILL forces exit → bash resubmits.
+# Parallel benchmark runner: 32 workers (fork context, no mp.spawn crashes).
+# First run uses --force to clear stale results.  Resubmissions use resume logic
+# to skip already-completed experiments.
+# On timeout: SIGUSR1 → bash trap → SIGTERM to Python → checkpoint → resubmit.
 MAX_RESUBMIT=10
 RESUBMIT_COUNT=${SLURM_RESUBMIT_COUNT:-0}
 
@@ -32,7 +32,7 @@ _handle_timeout() {
 trap '_handle_timeout' SIGUSR1
 
 echo "=========================================="
-echo "RAPS Benchmark Experiments (Sequential)"
+echo "RAPS Benchmark Experiments (Parallel)"
 echo "=========================================="
 echo "Job ID: $SLURM_JOB_ID"
 echo "Nodes: $SLURM_JOB_NUM_NODES"
@@ -48,23 +48,27 @@ source .venv/bin/activate
 mkdir -p output/frontier_scaling
 
 echo "Configuration:"
-echo "  - Systems: lassen, frontier"
+echo "  - Systems: lassen, frontier, bluewaters"
 echo "  - Node counts: 100, 1000, 10000"
 echo "  - Time quanta: 0.1s, 1s, 10s, 60s"
 echo "  - Duration: 12 hours simulated"
-echo "  - Workers: 1 (sequential, avoids spawn crashes)"
+echo "  - Workers: 32 (fork-based parallel)"
 echo ""
 
-# Run sequentially (resume mode: skips already-completed experiments).
-# SIGTERM from trap causes Python to checkpoint current experiment and exit.
+# First run: --force clears stale results CSV and reruns everything from scratch.
+# Resubmits: no --force, resume logic skips already-completed experiments.
+FORCE_FLAG=""
+[ "$RESUBMIT_COUNT" -eq 0 ] && FORCE_FLAG="--force"
+
 python -u src/run_frontier.py \
-    --systems lassen frontier \
+    --systems lassen frontier bluewaters \
     --nodes 100 1000 10000 \
     --dt 0.1 1 10 60 \
     --repeats 3 \
     --duration 12 \
-    --workers 1 \
-    --output output/frontier_scaling &
+    --workers 32 \
+    --output output/frontier_scaling \
+    $FORCE_FLAG &
 child_pid=$!
 
 wait "$child_pid"

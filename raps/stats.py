@@ -126,7 +126,7 @@ def get_network_stats(engine: Engine):
     else:
         mean_net_util = 0.0
 
-    stats["avg_network_util"] = mean_net_util * 100
+    stats["avg_network_util"] = min(mean_net_util * 100, 100.0)
 
     if engine.avg_slowdown_history:
         avg_job_slow = sum(engine.avg_slowdown_history) / len(engine.avg_slowdown_history)

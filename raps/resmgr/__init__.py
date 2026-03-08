@@ -9,7 +9,8 @@ from raps.policy import AllocationStrategy
 
 def make_resource_manager(total_nodes, down_nodes, config,
                           allocation_strategy=AllocationStrategy.CONTIGUOUS,
-                          hybrid_threshold=0.5):
+                          hybrid_threshold=0.5,
+                          seed=None):
     """
     Factory to choose between exclusive-node and multitenant managers.
 
@@ -19,13 +20,15 @@ def make_resource_manager(total_nodes, down_nodes, config,
     - config: Configuration dictionary
     - allocation_strategy: Node allocation strategy (CONTIGUOUS, RANDOM, HYBRID)
     - hybrid_threshold: For HYBRID strategy, communication intensity threshold
+    - seed: RNG seed for reproducible RANDOM/HYBRID allocation
     """
     if config.get("multitenant", False):
         return MultiTenantResourceManager(total_nodes, down_nodes, config)
     return ExclusiveNodeResourceManager(
         total_nodes, down_nodes, config,
         allocation_strategy=allocation_strategy,
-        hybrid_threshold=hybrid_threshold
+        hybrid_threshold=hybrid_threshold,
+        seed=seed,
     )
 
 

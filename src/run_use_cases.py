@@ -67,6 +67,7 @@ from raps.network.base import (
 )
 from raps.network.fat_tree import node_id_to_host_name
 from raps.network.dragonfly import parse_dragonfly_host, dragonfly_route
+from raps.network.torus3d import torus_host_from_real_index, torus_host_path
 
 # Optional: traffic templates
 try:
@@ -442,8 +443,14 @@ def compute_hop_counts(engine):
                 hosts = [node_id_to_host_name(n, k) for n in job.scheduled_nodes]
             elif net_model.topology == "dragonfly":
                 hosts = [net_model.real_to_fat_idx[n] for n in job.scheduled_nodes]
+            elif net_model.topology == "torus3d":
+                meta = net_model.meta
+                X, Y, Z = meta['dims']
+                hpr = meta['hosts_per_router']
+                hosts = [torus_host_from_real_index(n, X, Y, Z, hpr)
+                         for n in job.scheduled_nodes]
             else:
-                continue  # torus3d hop count analysis not yet supported
+                continue
 
             # Sample pairs (limit for large jobs)
             max_pairs = min(500, len(hosts) * (len(hosts) - 1) // 2)
@@ -465,6 +472,8 @@ def compute_hop_counts(engine):
                                 valiant_bias=getattr(net_model, 'valiant_bias', 0.0),
                                 inter_group_adj=iga,
                             )
+                        elif net_model.topology == "torus3d":
+                            path = torus_host_path(G, net_model.meta, hosts[i], hosts[j_idx])
                         else:
                             path = nx.shortest_path(G, hosts[i], hosts[j_idx])
                         # Hop count = number of edges = len(path) - 1
@@ -793,6 +802,7 @@ def run_simulation(
     delta_t: int = 1,
     routing: str = None,
     allocation: str = "contiguous",
+    allocation_seed: int = None,
     policy: str = "fcfs",
     backfill: str = None,
     simulate_network: bool = True,
@@ -830,6 +840,7 @@ def run_simulation(
         'workload': 'synthetic',
         'policy': policy,
         'allocation': allocation,
+        'allocation_seed': allocation_seed,
         'numjobs': len(jobs),
         # Backfill policy (None = no backfill)
         'backfill': backfill,
@@ -1036,6 +1047,7 @@ def run_simulation(
             energy_per_completed_job=energy_per_completed_job_mj,
             avg_power_watts=avg_power,
             peak_power_watts=peak_power,
+            idle_energy_pct=power_decomp['static_pct'],
             static_power_kw=power_decomp['static_power_kw'],
             dynamic_power_kw=power_decomp['dynamic_power_kw'],
             static_power_pct=power_decomp['static_pct'],
@@ -1372,6 +1384,8 @@ def run_uc3_placement(jobs, system, duration_minutes, node_count=None, delta_t=1
             delta_t=delta_t,
             routing=adaptive_algo,
             allocation=alloc,
+            # Fixed seed so random/hybrid placement is reproducible across runs.
+            allocation_seed=42 if alloc in ('random', 'hybrid') else None,
             policy='fcfs',
             simulate_network=True,
             label=label,

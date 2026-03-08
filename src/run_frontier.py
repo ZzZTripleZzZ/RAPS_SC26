@@ -183,17 +183,26 @@ class _SimConfig(SingleSimConfig):
     pass
 
 
-def inject_network_traces(jobs, trace_quanta=15):
-    """Inject synthetic network traces into jobs that lack them.
+def inject_network_traces(jobs, trace_quanta=15, force=False):
+    """Inject synthetic network traces into jobs.
 
-    Assigns a mix of communication patterns (ALL_TO_ALL and STENCIL_3D)
-    and generates traffic proportional to job size.
+    Assigns STENCIL_3D communication pattern and generates traffic proportional
+    to NIC bandwidth.
+
+    Args:
+        force: If True, overwrite existing traces (e.g. for telemetry jobs whose
+               real ntx_trace may be zero or represent a different unit system).
+               Default False preserves existing traces.
     """
     import random as _rng
     for job in jobs:
-        if job.ntx_trace is None or (hasattr(job.ntx_trace, '__len__') and len(job.ntx_trace) == 0):
+        needs_inject = (
+            force or
+            job.ntx_trace is None or
+            (hasattr(job.ntx_trace, '__len__') and len(job.ntx_trace) == 0)
+        )
+        if needs_inject:
             trace_len = max(1, int(job.expected_run_time / trace_quanta))
-            nodes = max(1, job.nodes_required)
 
             # Use STENCIL_3D for all synthetic jobs (O(N) vs O(N²) for ALL_TO_ALL)
             job.comm_pattern = CommunicationPattern.STENCIL_3D
@@ -444,9 +453,11 @@ def run_single_experiment(args_tuple):
             engine.jobs = jobs
             engine.total_initial_jobs = len(jobs)
         
-        # Inject network traces for all jobs
+        # Inject synthetic network traces for all benchmark jobs.
+        # force=True overwrites any telemetry ntx_trace so that all systems
+        # (including lassen) run under identical synthetic load conditions.
         trace_quanta = sys_config.scheduler.trace_quanta
-        inject_network_traces(engine.jobs, trace_quanta=trace_quanta)
+        inject_network_traces(engine.jobs, trace_quanta=trace_quanta, force=True)
 
         # Reduce congestion computation frequency for large systems
         if node_count >= 10000:

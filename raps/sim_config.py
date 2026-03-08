@@ -228,6 +228,12 @@ class SimConfig(RAPSBaseModel, abc.ABC):
     For hybrid allocation: jobs with communication intensity >= threshold
     get random allocation, others get contiguous. Range [0, 1].
     """
+    allocation_seed: int | None = None
+    """
+    Random seed for RANDOM and HYBRID allocation strategies.
+    If None, allocation is non-deterministic. Set to a fixed integer for
+    reproducible node placement across runs.
+    """
 
     # Arrival
     arrival: Literal["prescribed", "poisson"] = "prescribed"

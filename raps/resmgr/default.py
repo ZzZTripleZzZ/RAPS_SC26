@@ -15,7 +15,8 @@ class ExclusiveNodeResourceManager:
 
     def __init__(self, total_nodes, down_nodes, config=None,
                  allocation_strategy=AllocationStrategy.CONTIGUOUS,
-                 hybrid_threshold=None):
+                 hybrid_threshold=None,
+                 seed=None):
         """
         Initialize the resource manager.
 
@@ -33,6 +34,8 @@ class ExclusiveNodeResourceManager:
         self.config = config or {}
         self.allocation_strategy = allocation_strategy
         self.hybrid_threshold = hybrid_threshold if hybrid_threshold is not None else 0.5
+        # Isolated RNG for reproducible RANDOM/HYBRID allocation
+        self._rng = random.Random(seed)
 
         # Determine per-node capacities
         cfg = self.config
@@ -101,7 +104,7 @@ class ExclusiveNodeResourceManager:
             return self.available_nodes[:n]
         elif strategy == AllocationStrategy.RANDOM:
             # Randomly sample N nodes (distributes traffic)
-            return random.sample(self.available_nodes, n)
+            return self._rng.sample(self.available_nodes, n)
         else:
             raise ValueError(f"Unknown allocation strategy: {strategy}")
 

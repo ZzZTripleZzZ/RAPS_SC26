@@ -115,7 +115,10 @@ def apply_job_slowdown(*, job, max_throughput, net_util, net_cong, net_tx, net_r
                 debug_print_trace(job, "after dilation")
     else:
         slowdown_factor = 1
-    job.slowdown_factor = slowdown_factor
+    # Preserve the peak slowdown observed over the job's lifetime so that
+    # post-simulation reads of job.slowdown_factor reflect the worst congestion
+    # seen, not just the value at the last tick.
+    job.slowdown_factor = max(getattr(job, 'slowdown_factor', 1.0), slowdown_factor)
     job.stall_ratio = compute_stall_ratio(slowdown_factor)
 
     return slowdown_factor
@@ -128,10 +131,6 @@ def compute_system_network_stats(net_utils, net_tx_list, net_rx_list, slowdown_f
     avg_tx = sum(net_tx_list) / n
     avg_rx = sum(net_rx_list) / n
     avg_net = sum(net_utils) / n
-    # avg_slowdown_per_job = sum(slowdown_factors) / n
-    # self.avg_slowdown_history.append(avg_slowdown_per_job)
-    # max_slowdown_per_job = max(slowdown_factors)
-    # self.max_slowdown_history.append(max_slowdown_per_job)
 
     return avg_tx, avg_rx, avg_net
 

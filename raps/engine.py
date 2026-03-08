@@ -273,13 +273,15 @@ class Engine:
         allocation_str = getattr(sim_config, 'allocation', 'contiguous')
         allocation_strategy = AllocationStrategy(allocation_str)
         hybrid_threshold = getattr(sim_config, 'hybrid_threshold', 0.5)
+        allocation_seed = getattr(sim_config, 'allocation_seed', None)
 
         self.resource_manager = ResourceManager(
             total_nodes=self.config['TOTAL_NODES'],
             down_nodes=self.config['DOWN_NODES'],
             config=self.config,
             allocation_strategy=allocation_strategy,
-            hybrid_threshold=hybrid_threshold
+            hybrid_threshold=hybrid_threshold,
+            seed=allocation_seed,
         )
         print(f"Using allocation strategy: {allocation_strategy.value}"
               + (f" (threshold={hybrid_threshold})" if allocation_strategy == AllocationStrategy.HYBRID else ""))
@@ -797,7 +799,9 @@ class Engine:
             self.record_network_stats(avg_tx=avg_tx,
                                       avg_rx=avg_rx,
                                       avg_net=avg_net,
-                                      avg_stall_ratio=avg_stall_ratio)
+                                      avg_stall_ratio=avg_stall_ratio,
+                                      slowdown_per_job=slowdown_per_job,
+                                      max_slowdown=max(slowdown_factors) if slowdown_factors else 1.0)
         else:
             avg_tx, avg_rx, avg_net = None, None, None
             slowdown_per_job = 0
@@ -947,6 +951,8 @@ class Engine:
             'avg_net_rx':               list(self.avg_net_rx),
             'net_util_history':         list(self.net_util_history),
             'net_congestion_history':   list(self.net_congestion_history),
+            'avg_slowdown_history':     list(self.avg_slowdown_history),
+            'max_slowdown_history':     list(self.max_slowdown_history),
             'node_occupancy_history':   list(self.node_occupancy_history),
 
             # -- network model caches (optional, speeds up resume) --
@@ -1013,6 +1019,8 @@ class Engine:
         self.avg_net_rx                 = state['avg_net_rx']
         self.net_util_history           = state['net_util_history']
         self.net_congestion_history     = state['net_congestion_history']
+        self.avg_slowdown_history       = state.get('avg_slowdown_history', [])
+        self.max_slowdown_history       = state.get('max_slowdown_history', [])
         self.node_occupancy_history     = state['node_occupancy_history']
 
         # -- network model caches --
@@ -1194,11 +1202,15 @@ class Engine:
                              avg_rx,
                              avg_net,
                              avg_stall_ratio=None,
+                             slowdown_per_job=1.0,
+                             max_slowdown=1.0,
                              ):
         self.avg_net_tx.append(avg_tx)
         self.avg_net_rx.append(avg_rx)
         self.net_util_history.append(avg_net)
         self.stall_ratio_history.append((self.current_timestep, avg_stall_ratio))
+        self.avg_slowdown_history.append(slowdown_per_job)
+        self.max_slowdown_history.append(max_slowdown)
 
     def record_power_stats(self, *, time_delta, total_power_kw, total_loss_kw, jobs_power):
         if (time_delta == 1 and self.current_timestep % self.config['POWER_UPDATE_FREQ'] == 0) or time_delta != 1:

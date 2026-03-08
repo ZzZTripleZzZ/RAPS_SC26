@@ -242,7 +242,7 @@ def link_loads_for_job_torus(G, meta, host_list, traffic_bytes, *, comm_pattern=
     """
     Distribute traffic_bytes using torus routing, respecting comm_pattern.
     """
-    loads = {edge: 0.0 for edge in G.edges()}
+    loads = {}
     comm_pattern = normalize_comm_pattern(comm_pattern or CommunicationPattern.ALL_TO_ALL)
     n = len(host_list)
 
@@ -250,15 +250,15 @@ def link_loads_for_job_torus(G, meta, host_list, traffic_bytes, *, comm_pattern=
         return loads
 
     if comm_pattern == CommunicationPattern.ALL_TO_ALL:
+        per_peer = traffic_bytes / (n - 1)
         for src in host_list:
-            per_peer = traffic_bytes / (n - 1)
             for dst in host_list:
                 if dst == src:
                     continue
                 p = torus_host_path(G, meta, src, dst)
                 for u, v in zip(p, p[1:]):
                     e = tuple(sorted((u, v)))
-                    loads[e] += per_peer
+                    loads[e] = loads.get(e, 0.0) + per_peer
         return loads
 
     if comm_pattern == CommunicationPattern.STENCIL_3D:
@@ -271,7 +271,7 @@ def link_loads_for_job_torus(G, meta, host_list, traffic_bytes, *, comm_pattern=
             p = torus_host_path(G, meta, src, dst)
             for u, v in zip(p, p[1:]):
                 e = tuple(sorted((u, v)))
-                loads[e] += per_neighbor
+                loads[e] = loads.get(e, 0.0) + per_neighbor
         return loads
 
     raise ValueError(f"Unsupported comm_pattern: {comm_pattern}")

@@ -50,8 +50,7 @@ scheduler:
 network:
   topology: torus3d
   #topology: capacity
-  #network_max_bw: 9.6E9
-  network_max_bw: 1E7
+  network_max_bw: 9.6E9  # Gemini NIC: 9.6 GB/s (bidirectional)
   torus_x: 24
   torus_y: 24
   torus_z: 24

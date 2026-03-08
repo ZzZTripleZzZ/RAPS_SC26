@@ -46,7 +46,7 @@ DURATION=60
 DELTA_T=30
 
 echo "Configuration:"
-echo "  - Systems: lassen, frontier"
+echo "  - Systems: lassen, frontier, bluewaters"
 echo "  - Node count: 1000"
 echo "  - Time quantum: ${DELTA_T}s"
 echo "  - Duration: ${DURATION} minutes simulated"
@@ -56,7 +56,7 @@ echo ""
 
 if [ "$RESUBMIT_COUNT" -eq 0 ]; then
     echo "Fresh start: clearing old UC result CSVs..."
-    for SYSTEM in lassen frontier; do
+    for SYSTEM in lassen frontier bluewaters; do
         rm -f output/use_cases/${SYSTEM}_n1000/uc*.csv 2>/dev/null || true
     done
     echo "Done clearing."
@@ -102,24 +102,19 @@ run_uc() {
     return $exit_code
 }
 
-# Run Frontier first (faster: dragonfly APSP is quick), then Lassen
-echo "=== Phase 1: Frontier UCs (parallel) ==="
-for UC in 1 2 3 4; do
-    run_uc frontier "$UC" &
-    _CHILD_PIDS+=($!)
-done
-wait "${_CHILD_PIDS[@]}"
-_CHILD_PIDS=()
-echo ""
-
-echo "=== Phase 2: Lassen UCs (parallel) ==="
-for UC in 1 2 3 4; do
-    run_uc lassen "$UC" &
-    _CHILD_PIDS+=($!)
-done
-
-echo "Waiting for all Lassen UCs..."
+# Run all 3 systems × 4 UCs = 12 processes simultaneously.
+# Avoids sequential phases: 2-hour limit is set by the slowest individual UC,
+# not the sum of all phases.
+echo "=== All systems UCs (12 parallel) ==="
 failed_count=0
+for SYSTEM in frontier lassen bluewaters; do
+    for UC in 1 2 3 4; do
+        run_uc "$SYSTEM" "$UC" &
+        _CHILD_PIDS+=($!)
+    done
+done
+
+echo "Waiting for all 12 UC processes..."
 for pid in "${_CHILD_PIDS[@]}"; do
     wait $pid
     [ $? -ne 0 ] && failed_count=$((failed_count + 1))
@@ -134,7 +129,7 @@ echo "=========================================="
 
 echo ""
 echo "Results summary:"
-for SYSTEM in lassen frontier; do
+for SYSTEM in lassen frontier bluewaters; do
     echo ""
     echo "$SYSTEM use cases:"
     for UC in 1 2 3 4; do

@@ -26,10 +26,10 @@ import random as _rng
 # ---------------------------------------------------------------------------
 # Topology parameter tables (must match run_frontier.py)
 # ---------------------------------------------------------------------------
-DRAGONFLY_PARAMS = {
-    100:     {"d": 10,  "a": 10,  "p": 1},
-    1_000:   {"d": 10,  "a": 10,  "p": 10},
-    10_000:  {"d": 24,  "a": 24,  "p": 16},
+CIRCULANT_PARAMS = {
+    100:     {"groups": 10,  "d": 5,   "p": 2,  "inter": 4},   # 10*5*2  = 100,  port=10
+    1_000:   {"groups": 32,  "d": 16,  "p": 2,  "inter": 14},  # 32*16*2 = 1024, port=31
+    10_000:  {"groups": 74,  "d": 32,  "p": 5,  "inter": 27},  # 74*32*5 = 11840,port=63
 }
 
 FATTREE_K = {
@@ -48,26 +48,21 @@ def _fattree_k_for_nodes(n: int) -> int:
     return k
 
 
-def _dragonfly_params_for_nodes(n: int) -> dict:
-    best = None
-    for p in range(1, 65):
-        needed = math.ceil(n / p)
-        d = max(2, int(math.sqrt(needed)))
-        while d * (d + 1) * p < n:
-            d += 1
-        a = d
-        total = d * (a + 1) * p
-        if total >= n:
-            waste = total - n
-            if best is None or waste < best[0]:
-                best = (waste, d, a, p)
-    _, d, a, p = best
-    return {"d": d, "a": a, "p": p}
+def _circulant_params_for_nodes(n: int) -> dict:
+    for P in [2, 3, 4, 5, 6]:
+        needed = math.ceil(n / P)
+        R = max(4, int(math.sqrt(needed / 2)))
+        G = math.ceil(needed / R)
+        H = min(R - 1, 64 - P - (R - 1))
+        if H < 2:
+            continue
+        if G * R * P >= n and P + (R - 1) + H <= 64:
+            return {"groups": G, "d": R, "p": P, "inter": H}
 
 
 for _n in NODE_COUNTS:
     FATTREE_K[_n] = _fattree_k_for_nodes(_n)
-    DRAGONFLY_PARAMS[_n] = _dragonfly_params_for_nodes(_n)
+    CIRCULANT_PARAMS[_n] = _circulant_params_for_nodes(_n)
 
 
 def _override_system_config(system_name: str, node_count: int) -> SystemConfig:
@@ -95,10 +90,12 @@ def _override_system_config(system_name: str, node_count: int) -> SystemConfig:
             k = FATTREE_K.get(node_count) or _fattree_k_for_nodes(node_count)
             data["network"]["fattree_k"] = k
         elif topo == "dragonfly":
-            params = DRAGONFLY_PARAMS.get(node_count) or _dragonfly_params_for_nodes(node_count)
+            params = CIRCULANT_PARAMS.get(node_count) or _circulant_params_for_nodes(node_count)
+            data["network"]["dragonfly_groups"] = params["groups"]
             data["network"]["dragonfly_d"] = params["d"]
-            data["network"]["dragonfly_a"] = params["a"]
             data["network"]["dragonfly_p"] = params["p"]
+            data["network"]["dragonfly_inter"] = params["inter"]
+            data["network"].pop("dragonfly_a", None)
             data["network"]["routing_algorithm"] = "minimal"
 
     return SystemConfig.model_validate(data)

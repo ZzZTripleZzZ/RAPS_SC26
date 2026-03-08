@@ -153,7 +153,9 @@ PATS = {
     "submit_time": re.compile(r"\bqtime=([0-9]+)", re.I),
     "start_time": re.compile(r"\bstart=([0-9]+)", re.I),
     "end_time": re.compile(r"\bend=([0-9]+)", re.I),
-    # Walltime used
+    # Requested walltime limit (what the user asked for)
+    "time_limit_req": re.compile(r"\bResource_List\.walltime=(\d{2}:\d{2}:\d{2})", re.I),
+    # Actual walltime used
     "wall_time": re.compile(r"resources_used\.walltime=(\d{2}:\d{2}:\d{2})", re.I),
 }
 
@@ -171,11 +173,29 @@ def _parse_line(line: str, debug=False):
     # normalize scheduled_nodes into list
     if "scheduled_nodes" in rec:
         rec["scheduled_nodes"] = extract_nodes_from_line(rec["scheduled_nodes"])
-    # wall_time
-    if rec.get("wall_time"):
-        rec["wall_time"] = hms_to_seconds(rec["wall_time"])
+    # convert hh:mm:ss fields to seconds
+    for key in ("time_limit_req", "wall_time"):
+        if rec.get(key):
+            rec[key] = hms_to_seconds(rec[key])
 
     return rec
+
+
+def _delta_bytes(dfj):
+    """Convert cumulative Cray sampler counters to per-interval deltas.
+
+    The sampler stores monotonically increasing byte counts since node boot.
+    Two consecutive readings at t1 and t2 for the same NID give bytes
+    transferred during [t1, t2] as (tx[t2] - tx[t1]).  We sort by (nid, ts),
+    compute per-nid diffs, drop negative values (counter resets / node reboots),
+    then sum across all nodes and all intervals to get total bytes for the job.
+    """
+    if dfj.empty:
+        return 0, 0
+    sorted_df = dfj.sort_values(["nid", "ts"])
+    dtx = sorted_df.groupby("nid")["tx"].diff().clip(lower=0)
+    drx = sorted_df.groupby("nid")["rx"].diff().clip(lower=0)
+    return int(dtx.sum()), int(drx.sum())
 
 
 def load_data(local_dataset_path, **kwargs):
@@ -218,8 +238,6 @@ def load_data(local_dataset_path, **kwargs):
             nodes_required=nr,
             name=rec.get("name"),
             account=rec.get("account"),
-            # cpu_trace=[0]*nr*nc,     # placeholder trace
-            # gpu_trace=[0]*nr*0,      # Blue Waters has no GPUs
             cpu_trace=0,
             gpu_trace=0,
             nrx_trace=[],
@@ -229,7 +247,9 @@ def load_data(local_dataset_path, **kwargs):
             id=jid,
             priority=0,
             submit_time=sub,
-            time_limit=int(rec.get("wall_time")),
+            # Use requested walltime limit (Resource_List.walltime); fall back
+            # to actual walltime (resources_used.walltime) if not present.
+            time_limit=int(rec.get("time_limit_req") or rec.get("wall_time") or duration),
             start_time=st,
             end_time=et,
             expected_run_time=duration,
@@ -286,34 +306,41 @@ def load_data(local_dataset_path, **kwargs):
         nodes = r.get("scheduled_nodes") or []
         jid = r["id"]
 
-        # Filter by nodes, sum positive deltas
+        # Filter sampler rows belonging to this job's nodes
         dfj = sampler_df[sampler_df["nid"].isin(nodes)]
 
-        # Print first 10 rows (node, tx, rx)
         if debug:
             print(dfj[["nid", "tx", "rx"]].head(10))
 
-        total_tx = int(dfj["tx"].sum()) if not dfj.empty else 0
-        total_rx = int(dfj["rx"].sum()) if not dfj.empty else 0
+        # Compute inter-sample deltas (sampler stores cumulative counters)
+        total_tx, total_rx = _delta_bytes(dfj)
 
         nodes_required = r.get("nodes_required")
 
         avg_tx_per_node = total_tx / nodes_required if nodes_required > 0 else 0
         avg_rx_per_node = total_rx / nodes_required if nodes_required > 0 else 0
 
-        # Smear totals evenly across bins (simple first pass)
+        # Smear total bytes evenly across trace bins — consistent with lassen
         duration = max(1, et_abs - st_abs)
         samples = max(1, math.ceil(duration / bin_s))
         ntx, nrx = throughput_traces(avg_tx_per_node, avg_rx_per_node, samples)
+
+        # CPU utilisation: Blue Waters XE nodes are CPU-only (no GPUs).
+        # The preprocessed 4-column sampler file does not include CPU counters,
+        # so we use full utilisation as a placeholder — consistent with how
+        # lassen uses cpu_node_usage from its step CSV.
+        cpu_trace = [1.0] * samples
+        gpu_trace = [0.0] * samples  # XE nodes have no GPUs
 
         job_d = job_dict(
             nodes_required=nodes_required,
             name=r.get("name"),
             account=r.get("account", "unknown"),
-            cpu_trace=0,
-            gpu_trace=0,
+            cpu_trace=cpu_trace,
+            gpu_trace=gpu_trace,
             nrx_trace=nrx,
             ntx_trace=ntx,
+            comm_pattern="stencil_3d",
             end_state="UNKNOWN",
             scheduled_nodes=nodes,
             id=jid,

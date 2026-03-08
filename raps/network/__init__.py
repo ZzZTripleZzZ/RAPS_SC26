@@ -1,8 +1,10 @@
 import os
 import warnings
 
+import numpy as np
 import networkx as nx
 from raps.job import CommunicationPattern
+from raps.network._kernels import accumulate_max, accumulate
 
 # Module-level cache: maps (fattree_k, total_nodes) -> {(src, dst): [paths]}
 # Shared across all NetworkModel instances in the same process so that
@@ -81,7 +83,14 @@ from .base import (
 
 from .fat_tree import build_fattree, node_id_to_host_name, subsample_hosts
 from .torus3d import build_torus3d, link_loads_for_job_torus, torus_host_from_real_index
-from .dragonfly import build_dragonfly, dragonfly_node_id_to_host_name, build_dragonfly_idx_map
+from .dragonfly import (
+    build_dragonfly,
+    build_dragonfly_circulant,
+    dragonfly_node_id_to_host_name,
+    build_dragonfly_idx_map,
+    build_dragonfly_idx_map_circulant,
+    link_loads_for_job_dragonfly_adaptive,
+)
 from raps.plotting import plot_fattree_hierarchy, plot_dragonfly, plot_torus2d, plot_torus3d
 
 from raps.utils import get_current_utilization
@@ -176,29 +185,43 @@ class NetworkModel:
 
         elif self.topology == "dragonfly":
             D = self.config["DRAGONFLY_D"]
-            A = self.config["DRAGONFLY_A"]
+            A = self.config.get("DRAGONFLY_A")
             P = self.config["DRAGONFLY_P"]
-            self.net_graph = build_dragonfly(D, A, P)
+            G_explicit = self.config.get("DRAGONFLY_GROUPS")
+            H = self.config.get("DRAGONFLY_INTER")
+            offsets = self.config.get("DRAGONFLY_OFFSETS")
 
-            # Store dragonfly params for routing
-            self.dragonfly_d = D
-            self.dragonfly_a = A
-            self.dragonfly_p = P
-
-            # Use TOTAL_NODES (full node ID range) so all schedulable node IDs
-            # are covered. available_nodes has gaps from missing racks / down_nodes
-            # (e.g. Frontier: 9472 available out of IDs 0..9599), so using
-            # len(available_nodes) would miss high-ID nodes and cause KeyError.
+            # Resolve total_real_nodes from the available_nodes parameter
             total_real_nodes = config.get('TOTAL_NODES')
             if total_real_nodes is None:
-                if available_nodes is None:
-                    total_real_nodes = 4626  # fallback
-                elif isinstance(available_nodes, int):
-                    total_real_nodes = available_nodes
-                else:
-                    total_real_nodes = len(available_nodes)
+                total_real_nodes = available_nodes
+            if not isinstance(total_real_nodes, int):
+                if total_real_nodes is not None:
+                    total_real_nodes = len(total_real_nodes)
+            if not total_real_nodes:
+                total_real_nodes = 4626  # fallback for Lassen
 
-            self.real_to_fat_idx = build_dragonfly_idx_map(D, A, P, total_real_nodes)
+            if G_explicit is not None and H is not None:
+                # Circulant dragonfly (e.g. Frontier)
+                self.net_graph, self.inter_group_adj = build_dragonfly_circulant(
+                    G_explicit, D, P, H, offsets
+                )
+                self.dragonfly_d = D
+                self.dragonfly_a = None
+                self.dragonfly_p = P
+                self.real_to_fat_idx = build_dragonfly_idx_map_circulant(
+                    G_explicit, D, P, total_real_nodes
+                )
+                topo_info = f"circulant G={G_explicit} R={D} P={P} H={H}"
+            else:
+                # Legacy all-to-all dragonfly
+                self.net_graph = build_dragonfly(D, A, P)
+                self.inter_group_adj = None
+                self.dragonfly_d = D
+                self.dragonfly_a = A
+                self.dragonfly_p = P
+                self.real_to_fat_idx = build_dragonfly_idx_map(D, A, P, total_real_nodes)
+                topo_info = f"all-to-all D={D} A={A} P={P}"
 
             # Initialize global link loads for adaptive routing
             self.global_link_loads = {tuple(sorted(edge)): 0.0 for edge in self.net_graph.edges()}
@@ -208,7 +231,7 @@ class NetworkModel:
                 routing_info += f", threshold={self.ugal_threshold}"
             elif self.routing_algorithm == 'valiant':
                 routing_info += f", bias={self.valiant_bias}"
-            print(f"[DEBUG] Dragonfly: {len(self.real_to_fat_idx)} nodes, {routing_info}")
+            print(f"[DEBUG] Dragonfly ({topo_info}): {len(self.real_to_fat_idx)} nodes, {routing_info}")
 
         elif self.topology == "capacity":
             # Capacity-only model: no explicit graph
@@ -223,10 +246,26 @@ class NetworkModel:
         else:
             self._apsp = None
 
+        # Integer edge indexing for fast NumPy/Numba accumulation.
+        # Maps sorted string-tuple edge → contiguous integer index.
+        if self.net_graph is not None:
+            _sorted_edges = sorted(tuple(sorted(e)) for e in self.net_graph.edges())
+            self._edge_to_idx: dict = {e: i for i, e in enumerate(_sorted_edges)}
+            self._idx_to_edge: list = _sorted_edges
+            self._n_edges: int = len(_sorted_edges)
+            # Array-based global link loads (fast path; reset each tick).
+            self._global_loads_arr = np.zeros(self._n_edges, dtype=np.float64)
+        else:
+            self._edge_to_idx = {}
+            self._idx_to_edge = []
+            self._n_edges = 0
+            self._global_loads_arr = np.zeros(0, dtype=np.float64)
+
         # Per-job caches: host list mapping and computed paths
         self._job_host_cache = {}  # frozenset(scheduled_nodes) -> host_list
-        # Cached normalized link-load coefficients per job (for deterministic routing)
-        self._job_load_coeffs = {}  # job.id -> {edge: coefficient}
+        # Cached normalized link-load coefficients per job (for deterministic routing).
+        # Format: job.id -> (idx_arr: np.int32, coeff_arr: np.float64)
+        self._job_load_coeffs = {}
 
     def get_job_hosts(self, job):
         """Get cached host list for a job's scheduled nodes."""
@@ -276,12 +315,46 @@ class NetworkModel:
         if comm == CommunicationPattern.STENCIL_3D:
             coeffs = compute_stencil_3d_coefficients(
                 self.net_graph, host_list, apsp=self._apsp)
+        elif self.topology == 'dragonfly':
+            # Use analytical dragonfly minimal routing (O(1) per pair) instead
+            # of BFS on the graph — 100x+ faster for large dragonfly topologies.
+            coeffs = link_loads_for_job_dragonfly_adaptive(
+                self.net_graph, host_list, tx_volume_bytes=1.0,
+                algorithm='minimal',
+                d=self.dragonfly_d,
+                a=getattr(self, 'dragonfly_a', None),
+                inter_group_adj=getattr(self, 'inter_group_adj', None),
+            )
+        elif self.topology == 'torus3d':
+            # Use analytical torus DOR routing (O(path_len) per pair) instead
+            # of BFS — fast for large torus topologies.
+            coeffs = link_loads_for_job_torus(
+                self.net_graph, self.meta, host_list, tx_volume_bytes=1.0
+            )
         else:
             coeffs = compute_all_to_all_coefficients(
                 self.net_graph, host_list, apsp=self._apsp)
 
-        self._job_load_coeffs[job.id] = coeffs
-        return coeffs
+        # Convert coefficient dict to parallel (index, value) numpy arrays.
+        # Pre-sort edge keys so the hot accumulation loop needs no per-call sorting.
+        e2i = self._edge_to_idx
+        idx_list, coeff_list = [], []
+        for edge, coeff in coeffs.items():
+            e_key = tuple(sorted(edge))
+            idx = e2i.get(e_key)
+            if idx is not None:
+                idx_list.append(idx)
+                coeff_list.append(coeff)
+        if idx_list:
+            arr_coeffs = (
+                np.array(idx_list, dtype=np.int32),
+                np.array(coeff_list, dtype=np.float64),
+            )
+        else:
+            arr_coeffs = (np.empty(0, dtype=np.int32), np.empty(0, dtype=np.float64))
+
+        self._job_load_coeffs[job.id] = arr_coeffs
+        return arr_coeffs
 
     def simulate_network_utilization(self, *, job, debug=False):
         net_util = net_cong = net_tx = net_rx = 0
@@ -314,7 +387,7 @@ class NetworkModel:
         # -----------------------------------------------------------
         can_cache = (
             self.net_graph is not None
-            and self.topology in ("fat-tree", "dragonfly")
+            and self.topology in ("fat-tree", "dragonfly", "torus3d")
             and not self._uses_adaptive_routing()
         )
 
@@ -325,21 +398,14 @@ class NetworkModel:
                 coeffs = self._compute_and_cache_coefficients(
                     job, host_list, comm_pattern)
 
-            # Scale cached coefficients by current traffic volume
-            if coeffs:
-                max_load = 0.0
-                for coeff in coeffs.values():
-                    load = coeff * effective_tx
-                    byte_util = load / max_throughput
-                    if byte_util > max_load:
-                        max_load = byte_util
-                net_cong = max_load
-
-                # Update global link loads (for inter-job congestion)
-                for edge, coeff in coeffs.items():
-                    edge_key = tuple(sorted(edge))
-                    if edge_key in self.global_link_loads:
-                        self.global_link_loads[edge_key] += coeff * effective_tx
+            # Scale cached coefficients by current traffic volume.
+            # accumulate_max() does a single pass: accumulates into _global_loads_arr
+            # and returns max(load)/max_throughput — replaces two Python dict loops.
+            idx_arr, coeff_arr = coeffs
+            net_cong = accumulate_max(
+                self._global_loads_arr, idx_arr, coeff_arr,
+                effective_tx, max_throughput,
+            )
 
             return net_util, net_cong, net_tx, net_rx, max_throughput
 
@@ -372,9 +438,6 @@ class NetworkModel:
                         self.global_link_loads[edge_key] += load
 
         elif self.topology == "dragonfly":
-            D = self.config["DRAGONFLY_D"]
-            A = self.config["DRAGONFLY_A"]
-            P = self.config["DRAGONFLY_P"]
             # Directly use mapped host names (cached)
             host_list = self.get_job_hosts(job)
             if debug:
@@ -384,10 +447,11 @@ class NetworkModel:
 
             # Build dragonfly params for adaptive routing
             dragonfly_params = {
-                'd': D,
-                'a': A,
+                'd': self.dragonfly_d,
+                'a': self.dragonfly_a,
                 'ugal_threshold': self.ugal_threshold,
                 'valiant_bias': self.valiant_bias,
+                'inter_group_adj': getattr(self, 'inter_group_adj', None),
             }
 
             loads = link_loads_for_pattern(
@@ -443,10 +507,11 @@ class NetworkModel:
         Returns:
             dict with 'total_posted_pkts', 'total_tx_paused', 'system_stall_ratio'
         """
-        if not self.global_link_loads:
+        loads = self._get_loads_dict()
+        if not loads:
             return {'total_posted_pkts': 0.0, 'total_tx_paused': 0.0, 'system_stall_ratio': 0.0}
         link_stats = compute_link_stall_packet_stats(
-            self.global_link_loads,
+            loads,
             self.max_link_bw * 8,      # convert bytes/s → bits/s
             mean_pkt_size_bytes,
             dt,
@@ -476,16 +541,38 @@ class NetworkModel:
                 f.write(f"# dt={dt}\n")
             writer = _csv.writer(f)
             writer.writerow(['src', 'dst', 'bytes'])
-            for (u, v), b in self.global_link_loads.items():
+            for (u, v), b in self._get_loads_dict().items():
                 if b > 0:
                     writer.writerow([u, v, f'{b:.0f}'])
+
+    def _get_loads_dict(self) -> dict:
+        """Return current tick's link loads as a sorted-edge-tuple dict.
+
+        For deterministic routing the source of truth is ``_global_loads_arr``;
+        for adaptive routing it is the ``global_link_loads`` dict (maintained
+        in the slow path).  Callers (stall stats, dump, checkpoint) use this
+        method so they always get a consistent view regardless of routing mode.
+        """
+        if self._uses_adaptive_routing():
+            return self.global_link_loads
+        # Build sparse dict from the numpy array (only non-zero entries).
+        return {
+            self._idx_to_edge[i]: float(self._global_loads_arr[i])
+            for i in range(self._n_edges)
+            if self._global_loads_arr[i] > 0.0
+        }
 
     def reset_link_loads(self):
         """Reset global link loads at the start of each simulation tick."""
         if self.net_graph is not None:
-            self.global_link_loads = {
-                tuple(sorted(edge)): 0.0 for edge in self.net_graph.edges()
-            }
+            if self._uses_adaptive_routing():
+                # Adaptive routing reads/writes the dict each tick.
+                for key in self.global_link_loads:
+                    self.global_link_loads[key] = 0.0
+            else:
+                # Fast path: reset the numpy array (O(E) memset, much faster
+                # than rebuilding the dict from graph edges each tick).
+                self._global_loads_arr.fill(0.0)
 
     def plot_topology(self, output_dir):
         """Plot network topology - save as png file in output_dir."""

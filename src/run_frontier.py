@@ -50,7 +50,7 @@ from raps.telemetry import Telemetry
 # ---------------------------------------------------------------------------
 # Experiment grid
 # ---------------------------------------------------------------------------
-SYSTEMS = ["lassen", "frontier"]
+SYSTEMS = ["lassen", "frontier", "bluewaters"]
 
 NODE_COUNTS = [100, 1_000, 10_000]
 
@@ -88,14 +88,27 @@ ESTIMATED_WALL_TIME = {
     ("lassen", 10000, 10): 600,
     ("lassen", 10000, 1): 900,
     ("lassen", 10000, 0.1): 3600,
+    # Blue Waters (torus3d, DOR_XYZ cached) — similar speed to frontier
+    ("bluewaters", 100, 60): 2,
+    ("bluewaters", 100, 10): 3,
+    ("bluewaters", 100, 1): 25,
+    ("bluewaters", 100, 0.1): 200,
+    ("bluewaters", 1000, 60): 3,
+    ("bluewaters", 1000, 10): 5,
+    ("bluewaters", 1000, 1): 40,
+    ("bluewaters", 1000, 0.1): 400,
+    ("bluewaters", 10000, 60): 120,
+    ("bluewaters", 10000, 10): 900,
+    ("bluewaters", 10000, 1): 2500,
+    ("bluewaters", 10000, 0.1): 7200,
 }
 
-# Dragonfly params: p (hosts/router) * d (routers/group) * (a+1) (groups) >= nodes
-# We pre-compute sensible (d, a, p) combos per node count.
-DRAGONFLY_PARAMS = {
-    100:     {"d": 10,  "a": 10,  "p": 1},   # 10*11*1 = 110 >= 100
-    1_000:   {"d": 10,  "a": 10,  "p": 10},  # 10*11*10 = 1100 >= 1000
-    10_000:  {"d": 24,  "a": 24,  "p": 16},  # 24*25*16 = 9600
+# Circulant Dragonfly (Frontier-like): G groups, R routers/group, P hosts/router,
+# H inter-group links/router.  Port budget: P + (R-1) + H <= 64.
+CIRCULANT_PARAMS = {
+    100:     {"groups": 10,  "d": 5,   "p": 2,  "inter": 4},   # 10*5*2  = 100,  port=10
+    1_000:   {"groups": 32,  "d": 16,  "p": 2,  "inter": 14},  # 32*16*2 = 1024, port=31
+    10_000:  {"groups": 74,  "d": 32,  "p": 5,  "inter": 27},  # 74*32*5 = 11840,port=63
 }
 
 # Fat-tree: k^3/4 hosts.  k must be even.
@@ -103,6 +116,13 @@ FATTREE_K = {
     100:     8,      # 128 hosts
     1_000:   14,     # 686 -> k=16 => 1024
     10_000:  28,     # 5488 -> k=36 => 11664
+}
+
+# Torus3D (x, y, z routers, hosts_per_router=2) => x*y*z*2 hosts
+TORUS3D_PARAMS = {
+    100:    {"x": 4,  "y": 4,  "z": 4},    # 4*4*4*2   = 128   >= 100
+    1_000:  {"x": 8,  "y": 8,  "z": 8},    # 8*8*8*2   = 1024  >= 1000
+    10_000: {"x": 18, "y": 18, "z": 16},   # 18*18*16*2 = 10368 >= 10000
 }
 
 
@@ -114,31 +134,44 @@ def _fattree_k_for_nodes(n: int) -> int:
     return k
 
 
-def _dragonfly_params_for_nodes(n: int) -> dict:
-    """Find sensible (d, a, p) such that d*(a+1)*p >= n, keeping values balanced."""
-    # Try p from 1..64, pick the most cubic combo
+def _circulant_params_for_nodes(n: int) -> dict:
+    """Find G, R, P, H for circulant dragonfly with G*R*P >= n.
+
+    Port budget constraint: P + (R-1) + H <= 64.
+    Targets Frontier-like proportions: P=2, H ≈ R.
+    """
+    for P in [2, 3, 4, 5, 6]:
+        needed = math.ceil(n / P)
+        R = max(4, int(math.sqrt(needed / 2)))
+        G = math.ceil(needed / R)
+        H = min(R - 1, 64 - P - (R - 1))
+        if H < 2:
+            continue
+        if G * R * P >= n and P + (R - 1) + H <= 64:
+            return {"groups": G, "d": R, "p": P, "inter": H}
+
+
+def _torus3d_dims_for_nodes(n: int, hosts_per_router: int = 2) -> dict:
+    """Find x,y,z such that x*y*z*hosts_per_router >= n with balanced sizing."""
+    routers_needed = math.ceil(n / hosts_per_router)
+    cr = max(1, int(math.ceil(routers_needed ** (1 / 3))))
     best = None
-    for p in range(1, 65):
-        # d*(a+1) >= ceil(n/p)
-        needed = math.ceil(n / p)
-        # d ~= a, so d*(d+1) >= needed => d ~= sqrt(needed)
-        d = max(2, int(math.sqrt(needed)))
-        while d * (d + 1) * p < n:
-            d += 1
-        a = d  # keep symmetric
-        total = d * (a + 1) * p
-        if total >= n:
-            waste = total - n
-            if best is None or waste < best[0]:
-                best = (waste, d, a, p)
-    _, d, a, p = best
-    return {"d": d, "a": a, "p": p}
+    for x in range(max(1, cr - 2), cr + 3):
+        for y in range(max(1, cr - 2), cr + 3):
+            z = math.ceil(routers_needed / (x * y))
+            if x * y * z * hosts_per_router >= n:
+                waste = x * y * z - routers_needed
+                if best is None or waste < best[0]:
+                    best = (waste, x, y, z)
+    _, x, y, z = best
+    return {"x": x, "y": y, "z": z}
 
 
 # Recompute to make sure our tables are correct
 for n in NODE_COUNTS:
     FATTREE_K[n] = _fattree_k_for_nodes(n)
-    DRAGONFLY_PARAMS[n] = _dragonfly_params_for_nodes(n)
+    CIRCULANT_PARAMS[n] = _circulant_params_for_nodes(n)
+    TORUS3D_PARAMS[n] = _torus3d_dims_for_nodes(n)
 
 
 # ---------------------------------------------------------------------------
@@ -331,14 +364,22 @@ def _override_system_config(system_name: str, node_count: int) -> SystemConfig:
             k = FATTREE_K[node_count]
             data["network"]["fattree_k"] = k
         elif topo == "dragonfly":
-            params = DRAGONFLY_PARAMS[node_count]
+            params = CIRCULANT_PARAMS[node_count]
+            data["network"]["dragonfly_groups"] = params["groups"]
             data["network"]["dragonfly_d"] = params["d"]
-            data["network"]["dragonfly_a"] = params["a"]
             data["network"]["dragonfly_p"] = params["p"]
+            data["network"]["dragonfly_inter"] = params["inter"]
+            data["network"].pop("dragonfly_a", None)  # not used for circulant
             # Use minimal routing for scaling benchmarks — UGAL is O(N^2 * groups)
             # per tick and cannot be cached, making it orders of magnitude slower.
             # UC1 still evaluates adaptive vs minimal routing separately.
             data["network"]["routing_algorithm"] = "minimal"
+        elif topo == "torus3d":
+            params = TORUS3D_PARAMS[node_count]
+            data["network"]["torus_x"] = params["x"]
+            data["network"]["torus_y"] = params["y"]
+            data["network"]["torus_z"] = params["z"]
+            # DOR_XYZ is deterministic and cached — no routing override needed
 
     return SystemConfig.model_validate(data)
 
@@ -483,7 +524,12 @@ def run_single_experiment(args_tuple):
         total_wall_time = t_sim_end - t_engine_start
         simulated_seconds = sim_hours * 3600
         speedup = simulated_seconds / sim_wall_time if sim_wall_time > 0 else float("inf")
-        per_tick = sim_wall_time / tick_count if tick_count > 0 else 0
+        # tick_count counts generator yields (one per simulated second), not actual tick()
+        # calls.  tick() is called every delta_t seconds, so the real number of ticks is
+        # simulated_seconds / delta_t.  Use that for per_tick_ms so the metric is
+        # independent of delta_t choice.
+        actual_ticks = int(simulated_seconds / delta_t) if delta_t > 0 else tick_count
+        per_tick = sim_wall_time / actual_ticks if actual_ticks > 0 else 0
 
         # Collect stats
         net_stats = get_network_stats(engine)
@@ -501,7 +547,7 @@ def run_single_experiment(args_tuple):
         else:
             result.update({
                 "status": "OK",
-                "ticks": tick_count,
+                "ticks": actual_ticks,
                 "engine_init_s": round(engine_init_time, 3),
                 "sim_wall_s": round(sim_wall_time, 3),
                 "total_wall_s": round(total_wall_time, 3),
@@ -585,6 +631,33 @@ def load_completed_labels(csv_path: Path) -> set:
     return completed
 
 
+def purge_rows_from_csv(csv_path: Path, systems: list, node_counts: list):
+    """Remove rows matching the given systems+node_counts from the CSV (in-place).
+
+    Safe to call concurrently: uses the file lock and rewrites atomically.
+    Other jobs' rows (different system or node_count) are preserved.
+    """
+    lock_path = csv_path.with_suffix(".csv.lock")
+    with filelock.FileLock(lock_path, timeout=60):
+        if not csv_path.exists():
+            return
+        sys_set = set(systems)
+        nc_set = set(str(n) for n in node_counts)
+        try:
+            with open(csv_path, "r", newline="") as f:
+                reader = csv.DictReader(f)
+                fieldnames = reader.fieldnames or CSV_FIELDNAMES
+                kept = [r for r in reader
+                        if not (r.get("system") in sys_set
+                                and r.get("node_count") in nc_set)]
+        except Exception:
+            return  # Corrupted CSV – leave it alone
+        with open(csv_path, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(kept)
+
+
 def ensure_csv_header(csv_path: Path):
     """Create CSV with header if it doesn't exist yet."""
     lock_path = csv_path.with_suffix(".csv.lock")
@@ -645,6 +718,8 @@ def main():
                         help="Print experiment grid without running")
     parser.add_argument("--no-resume", action="store_true",
                         help="Don't skip already-completed experiments")
+    parser.add_argument("--force", action="store_true",
+                        help="Delete existing results CSV and rerun all experiments from scratch")
 
     args = parser.parse_args()
 
@@ -678,11 +753,19 @@ def main():
     # Print topology mapping
     nc_list = args.nodes or NODE_COUNTS
     print("  Fat-tree k values:    ", {n: FATTREE_K[n] for n in nc_list if n in FATTREE_K})
-    print("  Dragonfly (d,a,p):    ", {n: DRAGONFLY_PARAMS[n] for n in nc_list if n in DRAGONFLY_PARAMS})
+    print("  Dragonfly (circulant):", {n: CIRCULANT_PARAMS[n] for n in nc_list if n in CIRCULANT_PARAMS})
+    print("  Torus3D (x,y,z):      ", {n: TORUS3D_PARAMS[n] for n in nc_list if n in TORUS3D_PARAMS})
     print()
 
+    # --force: remove only rows for this job's scope so parallel jobs don't clobber each other
+    if args.force:
+        scope_systems = args.systems or SYSTEMS
+        scope_nodes = args.nodes or NODE_COUNTS
+        print(f"  [--force] Purging rows for systems={scope_systems} nodes={scope_nodes}")
+        purge_rows_from_csv(csv_path, scope_systems, scope_nodes)
+
     # Check for already-completed experiments (resume support)
-    if not args.no_resume:
+    if not args.no_resume and not args.force:
         completed = load_completed_labels(csv_path)
         if completed:
             print(f"  Resume mode: {len(completed)} experiments already completed, skipping them.")
@@ -705,9 +788,9 @@ def main():
 
     if args.dry_run:
         print(f"Experiments to run ({len(pending_grid)} pending, {len(completed)} completed):")
-        for i, (sys, nc, dt, rep) in enumerate(pending_grid):
-            est = ESTIMATED_WALL_TIME.get((sys, nc, dt), "?")
-            print(f"  [{i+1:3d}] {sys:>10s}  nodes={nc:>7d}  dt={dt:>5.1f}s  repeat={rep}  (~{est}s)")
+        for i, (sys_name, nc, dt, rep) in enumerate(pending_grid):
+            est = ESTIMATED_WALL_TIME.get((sys_name, nc, dt), "?")
+            print(f"  [{i+1:3d}] {sys_name:>10s}  nodes={nc:>7d}  dt={dt:>5.1f}s  repeat={rep}  (~{est}s)")
         total_est = sum(ESTIMATED_WALL_TIME.get((s, n, d), 600) for s, n, d, _ in pending_grid)
         print(f"\nTotal: {len(pending_grid)} experiments, estimated {total_est/3600:.1f}h sequential")
         return
@@ -753,7 +836,7 @@ def main():
             if result["status"] == "INTERRUPTED":
                 sys.exit(99)
     else:
-        ctx = mp.get_context("spawn")
+        ctx = mp.get_context("fork")
         with ctx.Pool(processes=workers) as pool:
             for result in pool.imap_unordered(run_and_save, tasks):
                 if result["status"] == "OK":

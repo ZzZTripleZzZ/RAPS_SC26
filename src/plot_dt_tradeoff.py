@@ -32,8 +32,9 @@ DEFAULT_CSV = ROOT / "output/frontier_scaling/results.csv"
 OUT_DIR     = ROOT / "output/figures"
 
 DT_ORDER      = [0.1, 1.0, 10.0, 60.0, 300.0, 600.0]
-SYS_LABELS    = {"frontier": "Frontier (dragonfly)", "lassen": "Lassen (fat-tree)"}
-SYS_COLORS    = {"frontier": "#D95F02", "lassen": "#1B9E77"}
+SYS_LABELS    = {"frontier": "Frontier (dragonfly)", "lassen": "Lassen (fat-tree)",
+                  "bluewaters": "Blue Waters (torus3d)"}
+SYS_COLORS    = {"frontier": "#D95F02", "lassen": "#1B9E77", "bluewaters": "#7570B3"}
 NODE_MARKERS  = {100: "o", 1_000: "s", 10_000: "^"}
 NODE_LS       = {100: ":", 1_000: "--", 10_000: "-"}
 
@@ -44,11 +45,11 @@ DPI  = 300
 
 plt.rcParams.update({
     'font.family':        'sans-serif',
-    'font.size':          10,
-    'axes.labelsize':     11,
-    'xtick.labelsize':    10,
-    'ytick.labelsize':    10,
-    'legend.fontsize':    8,
+    'font.size':          8,
+    'axes.labelsize':     8,
+    'xtick.labelsize':    7,
+    'ytick.labelsize':    7,
+    'legend.fontsize':    7,
     'legend.framealpha':  0.85,
     'legend.edgecolor':   '#cccccc',
     'axes.spines.top':    False,
@@ -163,7 +164,7 @@ def plot_speedup(agg: pd.DataFrame, out_dir: Path, reference_dt: float):
     fig, ax = plt.subplots(figsize=(FIGW, FIGH))
 
     legend_lines = []
-    for system in ["frontier", "lassen"]:
+    for system in ["frontier", "lassen", "bluewaters"]:
         color = SYS_COLORS[system]
         sdf   = agg[agg["system"] == system]
         if sdf.empty:
@@ -199,7 +200,7 @@ def plot_speedup(agg: pd.DataFrame, out_dir: Path, reference_dt: float):
     ax.set_xlabel(r"Time quantum $\Delta t$  (s)")
     ax.set_ylabel("Simulation speedup")
     ax.yaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f"{x:,.0f}×"))
-    ax.legend(handles=legend_lines, fontsize=7.5, loc="upper left",
+    ax.legend(handles=legend_lines, fontsize=7, loc="upper left",
               ncol=1, framealpha=0.88)
     _ygrid(ax)
     fig.tight_layout(pad=0.5)
@@ -212,7 +213,7 @@ def plot_cost_per_tick(agg: pd.DataFrame, out_dir: Path, reference_dt: float):
     dt_in_data = sorted(agg["delta_t"].unique())
     fig, ax = plt.subplots(figsize=(FIGW, FIGH))
 
-    for system in ["frontier", "lassen"]:
+    for system in ["frontier", "lassen", "bluewaters"]:
         color = SYS_COLORS[system]
         sdf   = agg[agg["system"] == system]
         if sdf.empty:
@@ -235,7 +236,7 @@ def plot_cost_per_tick(agg: pd.DataFrame, out_dir: Path, reference_dt: float):
     ax.set_yscale("log")
     ax.set_xlabel(r"Time quantum $\Delta t$  (s)")
     ax.set_ylabel("Cost per tick (ms)")
-    ax.legend(fontsize=7.5, loc="upper right", ncol=1, framealpha=0.88)
+    ax.legend(fontsize=7, loc="upper right", ncol=1, framealpha=0.88)
     _ygrid(ax)
     fig.tight_layout(pad=0.5)
     _save(fig, "fig_dt_cost.png")
@@ -253,7 +254,7 @@ def plot_speedup_accuracy(agg: pd.DataFrame, out_dir: Path, reference_dt: float)
 
     # Pre-compute per-system data and efficiency-optimal index
     sys_data = {}
-    for system in ["frontier", "lassen"]:
+    for system in ["frontier", "lassen", "bluewaters"]:
         sdf = agg[agg["system"] == system]
         if sdf.empty:
             continue
@@ -266,7 +267,7 @@ def plot_speedup_accuracy(agg: pd.DataFrame, out_dir: Path, reference_dt: float)
 
     FS = 6.5    # uniform small font for all text in this figure
 
-    for system in ["frontier", "lassen"]:
+    for system in ["frontier", "lassen", "bluewaters"]:
         if system not in sys_data:
             continue
         color = SYS_COLORS[system]
@@ -274,7 +275,7 @@ def plot_speedup_accuracy(agg: pd.DataFrame, out_dir: Path, reference_dt: float)
         oi    = sys_data[system]["opt_xi"]
 
         # Short label: system name only; line style is self-evident from dual axes
-        short = "Frontier" if system == "frontier" else "Lassen"
+        short = SYS_LABELS[system].split(' (')[0]
         ax_sp.plot(x_pos, mdt["speedup"].values, "o-",
                    color=color, linewidth=1.3, markersize=3.5, alpha=0.9,
                    label=short)
@@ -318,7 +319,7 @@ def plot_accuracy_breakdown(agg: pd.DataFrame, out_dir: Path, reference_dt: floa
     metric_names  = ["Avg congestion", "Avg slowdown"]
     metric_keys   = ["cong_err", "slow_err"]
 
-    for si, system in enumerate(["frontier", "lassen"]):
+    for si, system in enumerate(["frontier", "lassen", "bluewaters"]):
         color = SYS_COLORS[system]
         sdf   = agg[agg["system"] == system]
         if sdf.empty:
@@ -338,13 +339,13 @@ def plot_accuracy_breakdown(agg: pd.DataFrame, out_dir: Path, reference_dt: floa
 
         for xi in x:
             ax.text(xi + offset + w, -0.5, system.capitalize(),
-                    ha="center", va="top", fontsize=7.5, color=color, alpha=0.8)
+                    ha="center", va="top", fontsize=7, color=color, alpha=0.8)
 
     ax.set_xticks(np.arange(len(dt_in_data)) + 0.3)
     ax.set_xticklabels([f"Δt={dt:g}s" for dt in dt_in_data], rotation=15, ha='right')
     ax.set_ylabel(f"Accuracy error vs Δt={reference_dt:g}s  (%)")
     ax.set_ylim(bottom=0)
-    ax.legend(fontsize=8, loc="upper left")
+    ax.legend(fontsize=7, loc="upper left")
     ax.yaxis.grid(True, linestyle='--', alpha=0.25, linewidth=0.7, color='#888')
     fig.tight_layout(pad=0.5)
     _save(fig, "fig_dt_accuracy.png")
@@ -360,7 +361,7 @@ def plot_efficiency_score(agg: pd.DataFrame, out_dir: Path, reference_dt: float)
     fig, ax = plt.subplots(figsize=(FIGW, 2.3))  # match UC figure dimensions
 
     best_dts = {}
-    for system in ["frontier", "lassen"]:
+    for system in ["frontier", "lassen", "bluewaters"]:
         color = SYS_COLORS[system]
         sdf   = agg[agg["system"] == system]
         if sdf.empty:
@@ -387,12 +388,12 @@ def plot_efficiency_score(agg: pd.DataFrame, out_dir: Path, reference_dt: float)
         ax.axvline(xi, color='#999', linestyle="--", linewidth=1, alpha=0.5)
 
     ax.set_xticks(x_pos)
-    ax.set_xticklabels(x_labels, fontsize=9)
-    ax.set_xlabel(r"Time quantum $\Delta t$", fontsize=10)
-    ax.set_ylabel("Normalized efficiency\n(speedup × accuracy)", fontsize=10)
-    ax.tick_params(axis='y', labelsize=9)
+    ax.set_xticklabels(x_labels, fontsize=7)
+    ax.set_xlabel(r"Time quantum $\Delta t$", fontsize=8)
+    ax.set_ylabel("Normalized efficiency\n(speedup × accuracy)", fontsize=8)
+    ax.tick_params(axis='y', labelsize=7)
     ax.set_ylim(0, 1.22)
-    ax.legend(fontsize=8, loc="upper left")
+    ax.legend(fontsize=7, loc="upper left")
     _ygrid(ax)
     fig.tight_layout(pad=0.5)
     _save(fig, "fig_dt_efficiency.png")
@@ -406,7 +407,7 @@ def print_summary(agg: pd.DataFrame, reference_dt: float):
     print("SPEED–ACCURACY TRADEOFF SUMMARY")
     print(f"  Reference: Δt={reference_dt:g}s  (error=0% by definition)")
     print("=" * 72)
-    for system in ["frontier", "lassen"]:
+    for system in ["frontier", "lassen", "bluewaters"]:
         sdf = agg[agg["system"] == system]
         if sdf.empty:
             continue
@@ -476,6 +477,8 @@ def main():
     main_dir = out_dir / 'main'
     main_dir.mkdir(parents=True, exist_ok=True)
     for src_name, dst_name in [
+        ('fig_dt_tradeoff.png',   'benchmark_dt_tradeoff.png'),
+        ('fig_dt_efficiency.png', 'benchmark_dt_efficiency.png'),
         ('fig_dt_tradeoff.png',   'dt_tradeoff.png'),
         ('fig_dt_efficiency.png', 'dt_efficiency.png'),
     ]:

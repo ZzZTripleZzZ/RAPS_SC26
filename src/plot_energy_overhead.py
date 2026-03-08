@@ -39,11 +39,11 @@ DPI  = 300
 
 plt.rcParams.update({
     'font.family':       'sans-serif',
-    'font.size':          9,
-    'axes.labelsize':    10,
-    'xtick.labelsize':    8,
-    'ytick.labelsize':    8,
-    'legend.fontsize':    7.5,
+    'font.size':          8,
+    'axes.labelsize':     8,
+    'xtick.labelsize':    7,
+    'ytick.labelsize':    7,
+    'legend.fontsize':    7,
     'legend.framealpha':  0.85,
     'legend.edgecolor':  '#cccccc',
     'axes.spines.top':    False,
@@ -54,8 +54,10 @@ plt.rcParams.update({
 })
 
 # ColorBrewer Dark2 – matches existing UC figures
-SYS_COLOR  = {'frontier': '#D95F02', 'lassen': '#1B9E77'}
-SYS_LABEL  = {'frontier': 'Frontier (dragonfly)', 'lassen': 'Lassen (fat-tree)'}
+SYS_COLOR  = {'frontier': '#D95F02', 'lassen': '#1B9E77', 'bluewaters': '#7570B3'}
+SYS_LABEL  = {'frontier': 'Frontier (dragonfly)', 'lassen': 'Lassen (fat-tree)',
+               'bluewaters': 'Blue Waters (torus3d)'}
+SYSTEMS    = ['frontier', 'lassen', 'bluewaters']
 
 # Per-routing display name and colour
 ROUTE_LABEL = {
@@ -63,7 +65,8 @@ ROUTE_LABEL = {
     'ugal':     'UGAL',
     'valiant':  'Valiant',
     'ecmp':     'ECMP',
-    'adaptive': 'Adaptive',
+    'adaptive': 'Macro Adaptive',
+    'dor_xyz':  'DOR-XYZ',
 }
 ROUTE_COLOR = {
     'minimal':  '#7570B3',
@@ -137,11 +140,11 @@ def fig_energy_overhead_bars(save_dir: Path):
     Within each routing group, standard and heavy bars appear side-by-side.
     One panel per system.
     """
-    fig, axes = plt.subplots(1, 2, figsize=(FIGW * 2, FIGH),
+    fig, axes = plt.subplots(1, len(SYSTEMS), figsize=(FIGW * len(SYSTEMS), FIGH),
                              sharey=False, constrained_layout=True)
 
     any_data = False
-    for ax, system in zip(axes, ['frontier', 'lassen']):
+    for ax, system in zip(axes, SYSTEMS):
         dfs = load_uc4(system)
         oh  = {load: compute_overhead(df) for load, df in dfs.items()}
 
@@ -155,10 +158,10 @@ def fig_energy_overhead_bars(save_dir: Path):
 
         if not routings:
             ax.text(0.5, 0.5, 'No data yet', ha='center', va='center',
-                    transform=ax.transAxes, fontsize=9, color='#aaa')
-            ax.set_title(SYS_LABEL[system], fontsize=9, pad=4)
-            ax.set_xlabel('Routing', fontsize=9)
-            ax.set_ylabel('Energy overhead vs ideal (%)', fontsize=9)
+                    transform=ax.transAxes, fontsize=8, color='#aaa')
+            ax.set_title(SYS_LABEL[system], fontsize=8, pad=4)
+            ax.set_xlabel('Routing', fontsize=8)
+            ax.set_ylabel('Energy overhead vs ideal (%)', fontsize=8)
             continue
 
         any_data = True
@@ -197,8 +200,8 @@ def fig_energy_overhead_bars(save_dir: Path):
         ax.set_xticks(x)
         ax.set_xticklabels([ROUTE_LABEL.get(r, r) for r in routings],
                            rotation=20, ha='right')
-        ax.set_ylabel('Energy overhead vs ideal (%)', fontsize=9)
-        ax.set_title(SYS_LABEL[system], fontsize=9, pad=4)
+        ax.set_ylabel('Energy overhead vs ideal (%)', fontsize=8)
+        ax.set_title(SYS_LABEL[system], fontsize=8, pad=4)
         ax.yaxis.grid(True, linestyle='--', alpha=0.3, linewidth=0.7)
         if n_loads > 1:
             ax.legend(fontsize=7, loc='upper left')
@@ -218,10 +221,10 @@ def fig_energy_per_job(save_dir: Path):
     Side-by-side bars: routing algorithms × systems.
     Both standard and heavy load shown per routing.
     """
-    fig, axes = plt.subplots(1, 2, figsize=(FIGW * 2, FIGH),
+    fig, axes = plt.subplots(1, len(SYSTEMS), figsize=(FIGW * len(SYSTEMS), FIGH),
                              sharey=False, constrained_layout=True)
 
-    for ax, system in zip(axes, ['frontier', 'lassen']):
+    for ax, system in zip(axes, SYSTEMS):
         dfs = load_uc4(system)
         oh  = {load: compute_overhead(df) for load, df in dfs.items()}
 
@@ -234,10 +237,10 @@ def fig_energy_per_job(save_dir: Path):
 
         if not routings:
             ax.text(0.5, 0.5, 'No data yet', ha='center', va='center',
-                    transform=ax.transAxes, fontsize=9, color='#aaa')
-            ax.set_title(SYS_LABEL[system], fontsize=9, pad=4)
-            ax.set_xlabel('Routing', fontsize=9)
-            ax.set_ylabel('Energy/job (normalised to ideal)', fontsize=9)
+                    transform=ax.transAxes, fontsize=8, color='#aaa')
+            ax.set_title(SYS_LABEL[system], fontsize=8, pad=4)
+            ax.set_xlabel('Routing', fontsize=8)
+            ax.set_ylabel('Energy/job (normalised to ideal)', fontsize=8)
             continue
 
         loads_present = [l for l in ['standard', 'heavy'] if oh[l] is not None]
@@ -277,8 +280,8 @@ def fig_energy_per_job(save_dir: Path):
         ax.set_xticks(x)
         ax.set_xticklabels([ROUTE_LABEL.get(r, r) for r in routings],
                            rotation=20, ha='right')
-        ax.set_ylabel('Energy/job (normalised to ideal)', fontsize=9)
-        ax.set_title(SYS_LABEL[system], fontsize=9, pad=4)
+        ax.set_ylabel('Energy/job (normalised to ideal)', fontsize=8)
+        ax.set_title(SYS_LABEL[system], fontsize=8, pad=4)
         ax.yaxis.grid(True, linestyle='--', alpha=0.3, linewidth=0.7)
         ax.legend(fontsize=7, loc='upper left')
 
@@ -298,7 +301,7 @@ def fig_main_summary(save_dir: Path):
     """
     # Gather all data
     all_entries = []   # list of (system, load, routing, energy_overhead)
-    for system in ['frontier', 'lassen']:
+    for system in SYSTEMS:
         dfs = load_uc4(system)
         for load, df in dfs.items():
             oh = compute_overhead(df)
@@ -324,9 +327,9 @@ def fig_main_summary(save_dir: Path):
     # One x-group per (system, routing) pair
     groups = (data.groupby(['system', 'routing'])
               .size().reset_index(name='n')[['system', 'routing']])
-    # Order: frontier first, then lassen; within each: canonical routing order
-    canonical = ['minimal', 'ugal', 'valiant', 'ecmp', 'adaptive']
-    groups['sys_ord'] = groups['system'].map({'frontier': 0, 'lassen': 1})
+    # Order: frontier, lassen, bluewaters; within each: canonical routing order
+    canonical = ['minimal', 'ugal', 'valiant', 'ecmp', 'adaptive', 'dor_xyz']
+    groups['sys_ord'] = groups['system'].map({'frontier': 0, 'lassen': 1, 'bluewaters': 2})
     groups['rt_ord']  = groups['routing'].map(
         {r: i for i, r in enumerate(canonical)}).fillna(99)
     groups = groups.sort_values(['sys_ord', 'rt_ord']).reset_index(drop=True)
@@ -362,14 +365,15 @@ def fig_main_summary(save_dir: Path):
                 ax.text(xi + offset, v + 0.15, f'{v:.1f}%',
                         ha='center', va='bottom', fontsize=6, color='#333')
 
-    # Separator line between frontier and lassen groups
-    frontier_indices = [i for i, (_, g) in enumerate(groups.iterrows())
-                        if g['system'] == 'frontier']
-    lassen_indices   = [i for i, (_, g) in enumerate(groups.iterrows())
-                        if g['system'] == 'lassen']
-    if frontier_indices and lassen_indices:
-        sep_x = (frontier_indices[-1] + lassen_indices[0]) / 2
-        ax.axvline(sep_x, color='#bbb', linewidth=0.8, linestyle=':')
+    # Separator lines between system groups and system labels
+    sys_indices = {s: [] for s in SYSTEMS}
+    for i, (_, g) in enumerate(groups.iterrows()):
+        sys_indices[g['system']].append(i)
+
+    for s1, s2 in zip(SYSTEMS[:-1], SYSTEMS[1:]):
+        if sys_indices[s1] and sys_indices[s2]:
+            sep_x = (sys_indices[s1][-1] + sys_indices[s2][0]) / 2
+            ax.axvline(sep_x, color='#bbb', linewidth=0.8, linestyle=':')
 
     # Compute y_top from actual data to position system labels
     all_vals = data['overhead'].values
@@ -378,38 +382,31 @@ def fig_main_summary(save_dir: Path):
 
     _bbox = dict(boxstyle='round,pad=0.2', fc='white', ec='#cccccc',
                  alpha=0.85, linewidth=0.6)
-    if frontier_indices:
-        ax.text(np.mean(frontier_indices), y_top * 0.97,
-                'Frontier', ha='center', va='top',
-                fontsize=7, color=SYS_COLOR['frontier'], fontweight='bold',
-                bbox=_bbox)
-    if lassen_indices:
-        ax.text(np.mean(lassen_indices), y_top * 0.97,
-                'Lassen', ha='center', va='top',
-                fontsize=7, color=SYS_COLOR['lassen'], fontweight='bold',
-                bbox=_bbox)
+    short_labels = {'frontier': 'Frontier', 'lassen': 'Lassen', 'bluewaters': 'Blue Waters'}
+    for sys in SYSTEMS:
+        if sys_indices[sys]:
+            ax.text(np.mean(sys_indices[sys]), y_top * 0.97,
+                    short_labels[sys], ha='center', va='top',
+                    fontsize=7, color=SYS_COLOR[sys], fontweight='bold',
+                    bbox=_bbox)
 
     xlabels = [ROUTE_LABEL.get(g['routing'], g['routing'])
                for _, g in groups.iterrows()]
     ax.set_xticks(x)
-    ax.set_xticklabels(xlabels, rotation=30, ha='right', fontsize=7.5)
-    ax.set_ylabel('Energy overhead vs ideal (%)', fontsize=9)
+    ax.set_xticklabels(xlabels, rotation=30, ha='right', fontsize=7)
+    ax.set_ylabel('Energy overhead vs ideal (%)', fontsize=8)
     ax.yaxis.grid(True, linestyle='--', alpha=0.3, linewidth=0.7)
 
-    # Legend: load level + system colour patches
+    # Legend: load level only (system already identified by "Frontier"/"Lassen" labels)
     from matplotlib.patches import Patch
-    from matplotlib.lines import Line2D
     legend_items = [
         Patch(facecolor='#888', alpha=LOAD_ALPHA['standard'],
-              label='Standard load (200 jobs)'),
+              label='Std load (200 jobs)'),
         Patch(facecolor='#888', alpha=LOAD_ALPHA['heavy'],
-              hatch='//', label='Heavy load (300 jobs)'),
-        Patch(facecolor=SYS_COLOR['frontier'], label='Frontier'),
-        Patch(facecolor=SYS_COLOR['lassen'],   label='Lassen'),
+              hatch='//', edgecolor='#888', label='Heavy load (300 jobs)'),
     ]
-    ax.legend(handles=legend_items, fontsize=6.5, loc='upper left',
-              ncol=2, handlelength=1.2, columnspacing=0.8,
-              handletextpad=0.4, borderpad=0.5)
+    ax.legend(handles=legend_items, fontsize=6.5, loc='center right',
+              ncol=1, handlelength=1.2, handletextpad=0.4, borderpad=0.5)
 
     fig.tight_layout(pad=0.5)
     out = save_dir / 'energy_overhead_main.png'
@@ -426,7 +423,7 @@ def print_summary():
     print('=' * 60)
     print('ENERGY OVERHEAD SUMMARY  (vs no-congestion ideal)')
     print('=' * 60)
-    for system in ['frontier', 'lassen']:
+    for system in SYSTEMS:
         dfs = load_uc4(system)
         print(f'\n{SYS_LABEL[system]}:')
         for load in ['standard', 'heavy']:

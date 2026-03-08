@@ -86,9 +86,10 @@ network:
   network_max_bw: 25e9  # Slingshot 200 Gbps = 25 GB/s
   routing_algorithm: ugal
   ugal_threshold: 2.0
-  dragonfly_d: 48  # Routers per group
-  dragonfly_a: 48  # Global links per router (49 groups total)
-  dragonfly_p: 4   # Compute nodes per router
+  dragonfly_groups: 74  # Num groups (explicit; replaces a+1 formula)
+  dragonfly_d: 32       # Routers per group
+  dragonfly_p: 2        # Hosts per router (single-rail)
+  dragonfly_inter: 30   # Inter-group links per router (circulant; port budget: 2+31+30=63 ≤ 64)
   latency: 1
   # Cassini stall/flit model parameters (from counter data: 25 GB/s / 215M pkts/s ≈ 116 B)
   mean_packet_size_bytes: 116

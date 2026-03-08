@@ -90,23 +90,23 @@ run_uc() {
     return $rc
 }
 
-# ---- Phase 1: Frontier (faster per tick) ----
-echo "=== Frontier UCs (parallel) ==="
-for UC in 1 2 3 4; do
-    run_uc frontier "$UC" &
-    _CHILD_PIDS+=($!)
+# Run all 3 systems × 4 UCs = 12 processes simultaneously.
+# This avoids sequential phases so the 2-hour limit is set by the SLOWEST
+# individual UC (lassen adaptive ~118 min) rather than the sum of phases.
+echo "=== All systems UCs (12 parallel) ==="
+for SYSTEM in frontier lassen bluewaters; do
+    for UC in 1 2 3 4; do
+        run_uc "$SYSTEM" "$UC" &
+        _CHILD_PIDS+=($!)
+    done
 done
-wait "${_CHILD_PIDS[@]}"
-_CHILD_PIDS=()
-echo ""
 
-# ---- Phase 2: Lassen (slower: adaptive routing recomputes per tick) ----
-echo "=== Lassen UCs (parallel) ==="
-for UC in 1 2 3 4; do
-    run_uc lassen "$UC" &
-    _CHILD_PIDS+=($!)
+echo "Waiting for all 12 UC processes..."
+failed_count=0
+for pid in "${_CHILD_PIDS[@]}"; do
+    wait $pid
+    [ $? -ne 0 ] && failed_count=$((failed_count + 1))
 done
-wait "${_CHILD_PIDS[@]}"
 _CHILD_PIDS=()
 echo ""
 
@@ -118,7 +118,7 @@ echo ""
 echo "========================================================"
 echo "Summary"
 echo "========================================================"
-for SYSTEM in frontier lassen; do
+for SYSTEM in frontier lassen bluewaters; do
     DIR="output/use_cases/${SYSTEM}_n${NODES}_heavy"
     echo "$SYSTEM:"
     for UC in 1 2 3 4; do

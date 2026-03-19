@@ -19,6 +19,7 @@ from .multitenant import MultitenantWorkload
 from .network import NetworkTestWorkload
 from .inter_job_congestion import InterJobCongestionWorkload
 from .allocation_test import AllocationTestWorkload
+from .bully_victim import BullyVictimWorkload
 from .utils import plot_job_hist
 
 
@@ -60,6 +61,7 @@ class Workload(
     NetworkTestWorkload,
     InterJobCongestionWorkload,
     AllocationTestWorkload,
+    BullyVictimWorkload,
     Calculon,
     HPL
 ):

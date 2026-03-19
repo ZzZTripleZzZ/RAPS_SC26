@@ -677,6 +677,7 @@ def link_loads_for_job_dragonfly_adaptive(
     ugal_threshold: float = 2.0,
     valiant_bias: float = 0.0,
     inter_group_adj: dict | None = None,
+    comm_pattern=None,
 ) -> dict:
     """
     Compute link loads for a job using adaptive routing on Dragonfly.
@@ -692,26 +693,32 @@ def link_loads_for_job_dragonfly_adaptive(
         ugal_threshold: UGAL decision threshold
         valiant_bias: Valiant non-minimal bias
         inter_group_adj: Optional {(g, r): frozenset} for circulant topology
+        comm_pattern: CommunicationPattern (ALL_TO_ALL, STENCIL_3D, RANDOM_RING)
 
     Returns:
         Dict {(u, v): bytes} of link loads from this job
     """
+    from raps.job import CommunicationPattern, normalize_comm_pattern
+    from raps.network.base import stencil_3d_pairs
+
     job_loads = {}
 
     if len(job_hosts) < 2:
         return job_loads
 
-    # All-to-all traffic: each host sends to every other host.
-    # Iterate unordered pairs (i < j) to match compute_all_to_all_coefficients
-    # and avoid double-counting each undirected edge (ordered pairs give 2× load).
+    comm = normalize_comm_pattern(comm_pattern)
     n = len(job_hosts)
-    per_peer = tx_volume_bytes / (n - 1)
 
-    for i in range(n):
-        for j in range(i + 1, n):
-            src = job_hosts[i]
-            dst = job_hosts[j]
-
+    # Generate communication pairs based on pattern
+    if comm == CommunicationPattern.STENCIL_3D:
+        pairs = stencil_3d_pairs(job_hosts)
+        # Count neighbors per host for correct per-peer volume
+        from collections import Counter
+        neighbor_count = Counter(src for src, _ in pairs)
+        # pairs are directed (src→dst), route each once
+        for src, dst in pairs:
+            nc = neighbor_count[src]
+            per_peer = tx_volume_bytes / nc if nc > 0 else 0.0
             path = dragonfly_route(
                 src, dst, algorithm, d, a,
                 link_loads=link_loads,
@@ -719,9 +726,27 @@ def link_loads_for_job_dragonfly_adaptive(
                 valiant_bias=valiant_bias,
                 inter_group_adj=inter_group_adj,
             )
-
             for u, v in zip(path, path[1:]):
                 edge = tuple(sorted((u, v)))
-                job_loads[edge] = job_loads.get(edge, 0.0) + per_peer
+                # Directed pairs: half weight per edge for undirected accounting
+                job_loads[edge] = job_loads.get(edge, 0.0) + per_peer / 2
+    else:
+        # All-to-all: each host sends to every other host.
+        # Iterate unordered pairs (i < j) to avoid double-counting.
+        per_peer = tx_volume_bytes / (n - 1)
+        for i in range(n):
+            for j in range(i + 1, n):
+                src = job_hosts[i]
+                dst = job_hosts[j]
+                path = dragonfly_route(
+                    src, dst, algorithm, d, a,
+                    link_loads=link_loads,
+                    ugal_threshold=ugal_threshold,
+                    valiant_bias=valiant_bias,
+                    inter_group_adj=inter_group_adj,
+                )
+                for u, v in zip(path, path[1:]):
+                    edge = tuple(sorted((u, v)))
+                    job_loads[edge] = job_loads.get(edge, 0.0) + per_peer
 
     return job_loads

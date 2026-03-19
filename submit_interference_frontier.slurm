@@ -9,7 +9,7 @@
 
 # E2 Bully-Victim Interference — Frontier (dragonfly)
 # Sweeps bully_sizes=[0, 32, 64, 128, 256, 512] × routings=[minimal, valiant]
-# = 12 experiments, each ~1-3 min → total ~30 min
+# = 12 experiments, each ~2-5 min → total ~40 min
 
 module load PrgEnv-gnu cray-python
 cd /lustre/orion/gen053/scratch/zhangzifan/RAPS_SC26
@@ -19,7 +19,7 @@ cd /lustre/orion/gen053/scratch/zhangzifan/RAPS_SC26
     --bully-sizes 0 32 64 128 256 512 \
     --victim-count 4 \
     --victim-nodes 64 \
-    --duration 300 \
+    --duration 600 \
     --force
 
 echo "Frontier interference study complete"

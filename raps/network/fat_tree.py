@@ -293,6 +293,7 @@ def link_loads_for_job_fattree_adaptive(
     link_loads: dict = None,
     apsp: dict = None,
     paths_cache: dict = None,
+    comm_pattern=None,
 ) -> dict:
     """Compute link loads for a job using adaptive routing on fat-tree.
 
@@ -306,10 +307,14 @@ def link_loads_for_job_fattree_adaptive(
         paths_cache: Optional dict to cache all-shortest-paths results.
             Reusing the same dict across calls avoids redundant nx.all_shortest_paths
             calls (which are expensive for fat-tree cross-pod pairs).
+        comm_pattern: CommunicationPattern (ALL_TO_ALL, STENCIL_3D, RANDOM_RING)
 
     Returns:
         Dictionary mapping edge tuples to accumulated load values
     """
+    from raps.job import CommunicationPattern, normalize_comm_pattern
+    from raps.network.base import stencil_3d_pairs
+
     if link_loads is None:
         link_loads = {}
 
@@ -318,25 +323,34 @@ def link_loads_for_job_fattree_adaptive(
     if n <= 1:
         return loads
 
-    # All-to-all traffic pattern: each node sends tx_volume_bytes total,
-    # split evenly across (n-1) peers → per_pair volume on each path.
-    # Iterate unordered pairs (i < j) to match compute_all_to_all_coefficients,
-    # which also uses unordered pairs.  Using ordered pairs (i ≠ j) would
-    # double-count every undirected edge and give 2× the true load.
-    per_pair = tx_volume_bytes / (n - 1)
+    comm = normalize_comm_pattern(comm_pattern)
 
-    for i in range(n):
-        for j in range(i + 1, n):
-            src = job_hosts[i]
-            dst = job_hosts[j]
-
+    if comm == CommunicationPattern.STENCIL_3D:
+        pairs = stencil_3d_pairs(job_hosts)
+        from collections import Counter
+        neighbor_count = Counter(src for src, _ in pairs)
+        for src, dst in pairs:
+            nc = neighbor_count[src]
+            per_peer = tx_volume_bytes / nc if nc > 0 else 0.0
             path = fattree_route(
                 G, src, dst, algorithm, link_loads, apsp=apsp, paths_cache=paths_cache
             )
-
-            # Accumulate loads on path edges
             for k in range(len(path) - 1):
                 edge = tuple(sorted([path[k], path[k + 1]]))
-                loads[edge] = loads.get(edge, 0.0) + per_pair
+                # Directed pairs: half weight for undirected accounting
+                loads[edge] = loads.get(edge, 0.0) + per_peer / 2
+    else:
+        # All-to-all traffic pattern: unordered pairs (i < j)
+        per_pair = tx_volume_bytes / (n - 1)
+        for i in range(n):
+            for j in range(i + 1, n):
+                src = job_hosts[i]
+                dst = job_hosts[j]
+                path = fattree_route(
+                    G, src, dst, algorithm, link_loads, apsp=apsp, paths_cache=paths_cache
+                )
+                for k in range(len(path) - 1):
+                    edge = tuple(sorted([path[k], path[k + 1]]))
+                    loads[edge] = loads.get(edge, 0.0) + per_pair
 
     return loads

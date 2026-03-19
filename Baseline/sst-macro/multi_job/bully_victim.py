@@ -86,18 +86,21 @@ def compute_max_coeff_permutation(topology: str, n_ranks: int, perm: list) -> in
 
     if topology == "dragonfly":
         from raps.network.dragonfly import build_dragonfly
-        G = build_dragonfly(d=16, a=None, p=2, num_groups=32)
+        # d=16 routers/group, a=31 global links/router → num_groups=32, p=2 hosts/router
+        G = build_dragonfly(d=16, a=31, p=2)
     elif topology == "fattree":
-        from raps.network.fat_tree import build_fat_tree
-        G = build_fat_tree(k=16)
+        from raps.network.fat_tree import build_fattree
+        # k=16 → k^3/4 = 1024 hosts
+        G = build_fattree(k=16, total_nodes=1024)
     elif topology == "torus3d":
-        from raps.network.torus3d import build_torus_3d
-        G = build_torus_3d(8, 8, 8, hosts_per_router=2)
+        from raps.network.torus3d import build_torus3d
+        # 8×8×8 routers, 2 hosts each → 1024 hosts
+        G, _meta = build_torus3d(dims=(8, 8, 8), hosts_per_router=2)
     else:
         return 1
 
     hosts = sorted([n for n, attr in G.nodes(data=True)
-                    if attr.get('layer') == 'host'])
+                    if attr.get('layer') == 'host' or attr.get('type') == 'host'])
     if not hosts:
         hosts = sorted([n for n in G.nodes() if str(n).startswith('h_')])
     if len(hosts) < n_ranks:

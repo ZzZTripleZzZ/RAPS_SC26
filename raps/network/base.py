@@ -115,11 +115,9 @@ def apply_job_slowdown(*, job, max_throughput, net_util, net_cong, net_tx, net_r
                 debug_print_trace(job, "after dilation")
     else:
         slowdown_factor = 1
-    # Preserve the peak slowdown observed over the job's lifetime so that
-    # post-simulation reads of job.slowdown_factor reflect the worst congestion
-    # seen, not just the value at the last tick.
-    job.slowdown_factor = max(getattr(job, 'slowdown_factor', 1.0), slowdown_factor)
-    job.stall_ratio = compute_stall_ratio(slowdown_factor)
+    # Track peak slowdown across all ticks (not just the last one).
+    job.slowdown_factor = max(getattr(job, 'slowdown_factor', 1), slowdown_factor)
+    job.stall_ratio = compute_stall_ratio(job.slowdown_factor)
 
     return slowdown_factor
 
@@ -131,6 +129,10 @@ def compute_system_network_stats(net_utils, net_tx_list, net_rx_list, slowdown_f
     avg_tx = sum(net_tx_list) / n
     avg_rx = sum(net_rx_list) / n
     avg_net = sum(net_utils) / n
+    # avg_slowdown_per_job = sum(slowdown_factors) / n
+    # self.avg_slowdown_history.append(avg_slowdown_per_job)
+    # max_slowdown_per_job = max(slowdown_factors)
+    # self.max_slowdown_history.append(max_slowdown_per_job)
 
     return avg_tx, avg_rx, avg_net
 
@@ -261,16 +263,16 @@ def compute_all_to_all_coefficients(G, job_hosts, apsp=None):
 
     per_peer_coeff = 1.0 / (N - 1)
 
-    # Batch BFS: one single-source traversal per unique source node covers all
-    # destinations in one pass — O(N_unique * (V+E)) instead of O(N^2 * (V+E)).
-    unique_srcs = list(dict.fromkeys(job_hosts))
-    src_paths = {src: nx.single_source_shortest_path(G, src) for src in unique_srcs}
-
+    # Build paths grouped by source — avoids the O(N^3) scan in the
+    # original code that iterated *all* N^2 paths for *each* of N sources.
     for i in range(N):
         src = job_hosts[i]
         for j in range(i + 1, N):
             dst = job_hosts[j]
-            p = src_paths[src].get(dst) or nx.shortest_path(G, src, dst)
+            if apsp is not None:
+                p = apsp[src][dst]
+            else:
+                p = nx.shortest_path(G, src, dst)
             for u, v in zip(p, p[1:]):
                 edge = (u, v) if (u, v) in edge_set else (v, u)
                 coeffs[edge] = coeffs.get(edge, 0.0) + per_peer_coeff
@@ -557,6 +559,7 @@ def link_loads_for_pattern(
             ugal_threshold=dragonfly_params.get('ugal_threshold', 2.0),
             valiant_bias=dragonfly_params.get('valiant_bias', 0.0),
             inter_group_adj=dragonfly_params.get('inter_group_adj'),
+            comm_pattern=comm_pattern,
         )
 
     # Handle adaptive routing for Fat-tree
@@ -568,6 +571,7 @@ def link_loads_for_pattern(
             algorithm=routing_algorithm,
             link_loads=link_loads,
             paths_cache=fattree_params.get('paths_cache') if fattree_params else None,
+            comm_pattern=comm_pattern,
         )
 
     # Standard routing (shortest path)
@@ -653,20 +657,8 @@ def simulate_inter_job_congestion(network_model, jobs, legacy_cfg, debug=False, 
         print("[WARN] Network graph is not defined. Skipping congestion simulation.")
         return 0.0
 
-    # Use numpy array accumulation when the network model has integer edge indexing
-    # (all new-style NetworkModel instances).  Fall back to dict for legacy callers.
-    use_arr = hasattr(network_model, '_n_edges') and network_model._n_edges > 0
-    if use_arr:
-        import numpy as _np
-        total_loads_arr = _np.zeros(network_model._n_edges, dtype=_np.float64)
-        e2i = network_model._edge_to_idx
-        total_loads = None  # built lazily at the end for get_link_util_stats
-    else:
-        total_loads = {tuple(sorted(edge)): 0.0 for edge in network_model.net_graph.edges()}
-
+    total_loads = {tuple(sorted(edge)): 0.0 for edge in network_model.net_graph.edges()}
     trace_quanta = jobs[0].trace_quanta if jobs else 0
-
-    is_adaptive = routing_algorithm in ('ugal', 'valiant', 'ecmp', 'adaptive')
 
     for job in jobs:
         # Assuming job.current_run_time is 0 for this static simulation
@@ -684,18 +676,13 @@ def simulate_inter_job_congestion(network_model, jobs, legacy_cfg, debug=False, 
 
         # Fast path: reuse cached coefficients if available.
         # Only valid for deterministic (minimal) routing; adaptive routing is not cached.
+        is_adaptive = routing_algorithm in ('ugal', 'valiant', 'ecmp', 'adaptive')
         if not is_adaptive and job_coeffs_cache is not None and job.id in job_coeffs_cache:
-            cached = job_coeffs_cache[job.id]
-            if use_arr and isinstance(cached, tuple):
-                # New format: (idx_arr, coeff_arr) numpy arrays — no Python loop.
-                idx_arr, coeff_arr = cached
-                total_loads_arr[idx_arr] += coeff_arr * effective_tx
-            else:
-                # Legacy dict format fallback.
-                for edge, coeff in cached.items():
-                    edge_key = tuple(sorted(edge))
-                    if edge_key in total_loads:
-                        total_loads[edge_key] += coeff * effective_tx
+            coeffs = job_coeffs_cache[job.id]
+            for edge, coeff in coeffs.items():
+                edge_key = tuple(sorted(edge))
+                if edge_key in total_loads:
+                    total_loads[edge_key] += coeff * effective_tx
             continue
 
         # Slow path: compute link loads from scratch using the actual routing algorithm.
@@ -705,11 +692,6 @@ def simulate_inter_job_congestion(network_model, jobs, legacy_cfg, debug=False, 
         if network_model.topology in ("fat-tree", "dragonfly"):
             # Pass accumulated total_loads as link_loads so adaptive routing
             # (UGAL, adaptive fat-tree) can make informed path decisions.
-            link_loads_view = (
-                {network_model._idx_to_edge[i]: float(total_loads_arr[i])
-                 for i in range(network_model._n_edges) if total_loads_arr[i] > 0}
-                if use_arr else total_loads
-            )
             job_loads = link_loads_for_pattern(
                 network_model.net_graph,
                 host_list,
@@ -718,7 +700,7 @@ def simulate_inter_job_congestion(network_model, jobs, legacy_cfg, debug=False, 
                 routing_algorithm=routing_algorithm,
                 dragonfly_params=dragonfly_params,
                 fattree_params=fattree_params,
-                link_loads=link_loads_view,
+                link_loads=total_loads,
                 apsp=apsp,
             )
 
@@ -729,27 +711,12 @@ def simulate_inter_job_congestion(network_model, jobs, legacy_cfg, debug=False, 
             else:
                 job_loads = link_loads_for_job_torus(network_model.net_graph, network_model.meta, host_list, effective_tx)
 
-        if use_arr:
-            for edge, load in job_loads.items():
-                idx = e2i.get(tuple(sorted(edge)))
-                if idx is not None:
-                    total_loads_arr[idx] += load
-        else:
-            for edge, load in job_loads.items():
-                edge_key = tuple(sorted(edge))
-                if edge_key in total_loads:
-                    total_loads[edge_key] += load
+        for edge, load in job_loads.items():
+            edge_key = tuple(sorted(edge))
+            if edge_key in total_loads:
+                total_loads[edge_key] += load
 
     max_throughput = max_throughput_per_tick(legacy_cfg, trace_quanta)
-
-    if use_arr:
-        # Build sparse dict only for get_link_util_stats (called once per tick).
-        total_loads = {
-            network_model._idx_to_edge[i]: float(total_loads_arr[i])
-            for i in range(network_model._n_edges)
-            if total_loads_arr[i] > 0.0
-        }
-
     net_stats = get_link_util_stats(total_loads, max_throughput)
 
     return net_stats

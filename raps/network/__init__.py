@@ -139,6 +139,10 @@ class NetworkModel:
         # Global link loads for adaptive routing (reset each tick)
         self.global_link_loads = {}
 
+        # Congestion onset threshold: link utilization below which M/D/1 slowdown
+        # is not applied.  Topology-specific; overridden below for dragonfly.
+        self.u_onset = 0.0
+
         if self.topology == "fat-tree":
             total_nodes = config['TOTAL_NODES'] - len(config['DOWN_NODES'])
             self.fattree_k = config.get("FATTREE_K")
@@ -213,6 +217,10 @@ class NetworkModel:
                     G_explicit, D, P, total_real_nodes
                 )
                 topo_info = f"circulant G={G_explicit} R={D} P={P} H={H}"
+                # Congestion onset threshold: fraction of link capacity at which a
+                # dragonfly global link first saturates under uniform traffic.
+                # u_onset = H / ((G-1) * P)  [Kim et al. 2008]
+                self.u_onset = H / ((G_explicit - 1) * P)
             else:
                 # Legacy all-to-all dragonfly
                 self.net_graph = build_dragonfly(D, A, P)

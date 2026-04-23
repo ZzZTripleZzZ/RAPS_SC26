@@ -700,30 +700,28 @@ class Engine:
                     self._last_congestion = congestion_stats
             self.net_congestion_history.append((self.current_timestep, self._last_congestion))
 
-        # Propagate inter-job congestion to per-job slowdowns.
-        # Per-job STENCIL_3D traffic alone rarely saturates a link (per-job util << 1.0).
-        # The aggregate inter-job load is the correct measure of how congested the
-        # shared network is. Use an M/D/1 queuing model: at utilisation ρ the mean
-        # waiting time multiplier is  1 + ρ²/(2(1-ρ)), so jobs experience a slowdown
-        # that grows with congestion even below 100 % saturation.
-        # Only apply when ρ < 1.0: when aggregate congestion ≥ 1.0 (e.g. fat-tree
-        # minimal routing), the per-job path (worst_link_util > 1 → apply_job_slowdown)
-        # already dilated the job.  Clamping ρ = min(3.55, 0.99) would give a
-        # catastrophic 50× slowdown for already-handled cases.
-        if 0.05 < self._last_congestion < 1.0 and net_utils:
-            rho = self._last_congestion
-            inter_job_slowdown = 1.0 + rho ** 2 / (2.0 * (1.0 - rho))
+        # Propagate inter-job congestion to per-job slowdowns (paper Eq. 2).
+        # For each running job use its own worst-link utilization η_J (net_cong),
+        # not the global aggregate, so routing algorithms that spread load more
+        # evenly receive proportionally lower slowdowns.
+        # Formula: S_J = 1 + (η_J − u_onset)² / [2(1 − η_J)], u_onset < η_J < 1.
+        # When η_J ≥ 1.0 the job was already dilated by apply_job_slowdown above.
+        if net_utils:
+            u_onset = getattr(self.network_model, 'u_onset', 0.0) if self.network_model else 0.0
             for i, job in enumerate(self.running):
-                if i < len(net_utils) and net_utils[i] > 0:
-                    apply_job_slowdown(
-                        job=job,
-                        max_throughput=1.0,   # unused when net_cong > 1
-                        net_util=net_utils[i],
-                        net_cong=inter_job_slowdown,
-                        net_tx=net_tx_list[i] if i < len(net_tx_list) else 0.0,
-                        net_rx=net_rx_list[i] if i < len(net_rx_list) else 0.0,
-                        debug=self.debug,
-                    )
+                if i < len(net_congs) and net_congs[i] > 0:
+                    eta_j = net_congs[i]
+                    if u_onset < eta_j < 1.0:
+                        slowdown_j = 1.0 + (eta_j - u_onset) ** 2 / (2.0 * (1.0 - eta_j))
+                        apply_job_slowdown(
+                            job=job,
+                            max_throughput=1.0,
+                            net_util=net_utils[i],
+                            net_cong=slowdown_j,
+                            net_tx=net_tx_list[i] if i < len(net_tx_list) else 0.0,
+                            net_rx=net_rx_list[i] if i < len(net_rx_list) else 0.0,
+                            debug=self.debug,
+                        )
         # ---
 
         # --- Optional link-load snapshot for chord-diagram visualization ---

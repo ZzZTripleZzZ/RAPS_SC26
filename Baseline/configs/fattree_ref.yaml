@@ -1,0 +1,35 @@
+# Reference Fat-tree topology specification
+# Used as the common ground truth for all simulator comparisons.
+#
+# Topology: k-ary Fat-tree (k=4)
+#   k:                4
+#   Pods:             4
+#   Core switches:    4   ((k/2)^2)
+#   Agg switches:     8   (k * k/2)
+#   Edge switches:    8   (k * k/2)
+#   Servers:          16  (k^3/4)
+#   Total switches:   20
+#
+# Switch port budget: k = 4 ports per switch (4-port switches)
+#   Core:  k downlinks
+#   Agg:   k/2 uplinks to core + k/2 downlinks to edge
+#   Edge:  k/2 uplinks to agg + k/2 downlinks to hosts
+#
+# Network parameters:
+#   Link bandwidth:  12.5 GB/s  (Lassen-like)
+#   Link latency:    100 ns
+#   MTU:             4096 bytes
+#   Routing:         ECMP (Equal-Cost Multi-Path)
+
+topology: fattree
+k: 4
+link_bandwidth_gbps: 12.5
+link_latency_ns: 100
+mtu_bytes: 4096
+routing: ecmp
+
+# Derived quantities (informational):
+# total_hosts: 16
+# total_switches: 20
+# bisection_bandwidth_gbps: (k/2)^2 * 12.5 = 4 * 12.5 = 50  (oversubscription ratio 1:1)
+# oversubscription_ratio: 1  (full bisection bandwidth fat-tree)

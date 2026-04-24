@@ -144,7 +144,8 @@ class SimConfig(RAPSBaseModel, abc.ABC):
     # Workload arguments (TODO split into separate model)
     workload: Literal['random', 'benchmark', 'peak', 'idle', 'synthetic',
                       'multitenant', 'replay', 'randomAI', 'network_test',
-                      'inter_job_congestion', 'allocation_test', 'calculon', 'hpl'] = "random"
+                      'inter_job_congestion', 'allocation_test', 'calculon', 'hpl',
+                      'template_mix_a', 'template_mix_b', 'template_mix_c'] = "random"
 
     """ Type of synthetic workload """
     multimodal: list[float] = [1.0]

@@ -439,6 +439,60 @@ def compute_stencil_3d_coefficients(G, job_hosts, apsp=None):
     return coeffs
 
 
+def compute_matrix_template_coefficients(G, job_hosts, traffic_matrix, apsp=None):
+    """Return {edge: coefficient} for a MATRIX_TEMPLATE communication pattern.
+
+    ``traffic_matrix`` must be an M×M normalized weight matrix (rows summing
+    to ≤1) where entry (i, j) is the fraction of rank i's send volume that
+    is addressed to rank j.  ``job_hosts[i]`` maps rank i → physical host.
+
+    The resulting coefficients can be multiplied by ``tx_volume_bytes`` to
+    recover the per-link byte load contribution of this job — compatible with
+    the caching layer used for ALL_TO_ALL and STENCIL_3D patterns.
+    """
+    if traffic_matrix is None:
+        return {}
+
+    m = traffic_matrix.shape[0]
+    if m != len(job_hosts):
+        raise ValueError(
+            f"traffic_matrix shape {traffic_matrix.shape} does not match "
+            f"number of job hosts {len(job_hosts)}"
+        )
+
+    edge_set = set(G.edges())
+    coeffs: dict = {}
+    # Iterate only over nonzero entries — tiled stencils stay extremely sparse.
+    src_ranks, dst_ranks = np.nonzero(traffic_matrix)
+    for i, j in zip(src_ranks.tolist(), dst_ranks.tolist()):
+        if i == j:
+            continue
+        w = float(traffic_matrix[i, j])
+        if w == 0.0:
+            continue
+        src = job_hosts[i]
+        dst = job_hosts[j]
+        if src == dst:
+            continue
+        try:
+            if apsp is not None:
+                path = apsp[src][dst]
+            else:
+                path = nx.shortest_path(G, src, dst)
+        except (nx.NetworkXNoPath, KeyError):
+            continue
+        for u, v in zip(path, path[1:]):
+            edge = (u, v) if (u, v) in edge_set else (v, u)
+            coeffs[edge] = coeffs.get(edge, 0.0) + w
+    return coeffs
+
+
+def link_loads_for_job_matrix(G, job_hosts, traffic_matrix, tx_volume_bytes, apsp=None):
+    """Link loads for a MATRIX_TEMPLATE pattern (thin wrapper over coefficients)."""
+    coeffs = compute_matrix_template_coefficients(G, job_hosts, traffic_matrix, apsp=apsp)
+    return {edge: coeff * tx_volume_bytes for edge, coeff in coeffs.items()}
+
+
 def apply_message_size_overhead(tx_volume_bytes, message_size, num_peers, *, overhead_bytes=None):
     """
     Apply message size overhead to the traffic volume.
@@ -521,6 +575,7 @@ def link_loads_for_pattern(
     fattree_params: dict | None = None,
     link_loads: dict | None = None,
     apsp: dict | None = None,
+    traffic_matrix=None,
 ):
     """
     Dispatch to appropriate link load calculation based on communication pattern
@@ -545,6 +600,13 @@ def link_loads_for_pattern(
     from raps.network.fat_tree import link_loads_for_job_fattree_adaptive
 
     comm_pattern = normalize_comm_pattern(comm_pattern)
+
+    # Matrix-template always routes per-pair along shortest paths regardless
+    # of the configured routing algorithm.  Adaptive routing with explicit
+    # matrix weights is not yet supported, so we deliberately bypass the
+    # adaptive dispatch below.
+    if comm_pattern == CommunicationPattern.MATRIX_TEMPLATE:
+        return link_loads_for_job_matrix(G, job_hosts, traffic_matrix, tx_volume_bytes, apsp=apsp)
 
     # Handle adaptive routing for Dragonfly
     if routing_algorithm and dragonfly_params and routing_algorithm in ('ugal', 'valiant'):
@@ -579,6 +641,8 @@ def link_loads_for_pattern(
         return link_loads_for_job_stencil_3d(G, job_hosts, tx_volume_bytes, apsp=apsp)
     elif comm_pattern == CommunicationPattern.RANDOM_RING:
         return link_loads_for_job_ring(G, job_hosts, tx_volume_bytes, apsp=apsp)
+    elif comm_pattern == CommunicationPattern.MATRIX_TEMPLATE:
+        return link_loads_for_job_matrix(G, job_hosts, traffic_matrix, tx_volume_bytes, apsp=apsp)
     else:
         # Default to all-to-all
         return link_loads_for_job(G, job_hosts, tx_volume_bytes, apsp=apsp)
@@ -679,10 +743,19 @@ def simulate_inter_job_congestion(network_model, jobs, legacy_cfg, debug=False, 
         is_adaptive = routing_algorithm in ('ugal', 'valiant', 'ecmp', 'adaptive')
         if not is_adaptive and job_coeffs_cache is not None and job.id in job_coeffs_cache:
             coeffs = job_coeffs_cache[job.id]
-            for edge, coeff in coeffs.items():
-                edge_key = tuple(sorted(edge))
-                if edge_key in total_loads:
-                    total_loads[edge_key] += coeff * effective_tx
+            if isinstance(coeffs, tuple):
+                # NumPy array format (idx_arr, coeff_arr) from integer-indexed fast path.
+                idx_arr, coeff_arr = coeffs
+                idx_to_edge = network_model._idx_to_edge
+                for idx, coeff in zip(idx_arr, coeff_arr):
+                    edge_key = idx_to_edge[idx]
+                    if edge_key in total_loads:
+                        total_loads[edge_key] += coeff * effective_tx
+            else:
+                for edge, coeff in coeffs.items():
+                    edge_key = tuple(sorted(edge))
+                    if edge_key in total_loads:
+                        total_loads[edge_key] += coeff * effective_tx
             continue
 
         # Slow path: compute link loads from scratch using the actual routing algorithm.
@@ -702,12 +775,19 @@ def simulate_inter_job_congestion(network_model, jobs, legacy_cfg, debug=False, 
                 fattree_params=fattree_params,
                 link_loads=total_loads,
                 apsp=apsp,
+                traffic_matrix=getattr(job, 'traffic_template', None),
             )
 
         elif network_model.topology == "torus3d":
             # Use pattern-aware loading for stencil, torus-specific for all-to-all
             if comm_pattern == CommunicationPattern.STENCIL_3D:
                 job_loads = link_loads_for_pattern(network_model.net_graph, host_list, effective_tx, comm_pattern, apsp=apsp)
+            elif comm_pattern == CommunicationPattern.MATRIX_TEMPLATE:
+                job_loads = link_loads_for_job_matrix(
+                    network_model.net_graph, host_list,
+                    getattr(job, 'traffic_template', None),
+                    effective_tx, apsp=apsp,
+                )
             else:
                 job_loads = link_loads_for_job_torus(network_model.net_graph, network_model.meta, host_list, effective_tx)
 

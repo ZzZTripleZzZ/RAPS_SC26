@@ -1,0 +1,56 @@
+// BookSim2 3D Torus Configuration Template
+// Topology: 8×8×8 torus = 512 routers (BookSim2 does not support concentration field)
+// Matches BlueWaters reference: torus3d 24x24x24 scaled down for baseline
+// Routing: DOR (dimension-order routing, deterministic)
+// Injection rate: INJECTION_RATE (= desired ρ, fraction of link bandwidth)
+
+// ========================
+// Router architecture
+// ========================
+num_vcs     = 6;    // 2 per dimension for DOR deadlock freedom
+vc_buf_size = 64;
+wait_for_tail_credit = 0;
+
+vc_allocator = separable_input_first;
+sw_allocator = separable_input_first;
+alloc_iters  = 1;
+
+credit_delay   = 2;
+routing_delay  = 0;
+vc_alloc_delay = 1;
+sw_alloc_delay = 1;
+st_final_delay = 1;
+
+input_speedup    = 1;
+output_speedup   = 1;
+internal_speedup = 2.0;
+
+// ========================
+// Topology
+// ========================
+// 3D torus: k=8 per dimension, n=3 dimensions, 512 routers/hosts
+topology      = torus;
+k             = 8;
+n             = 3;
+
+// ========================
+// Routing
+// ========================
+routing_function = dim_order;   // DOR — BookSim2 appends _torus internally; dim_order_torus would error
+
+// ========================
+// Traffic / Simulation
+// ========================
+traffic = uniform;
+injection_rate = INJECTION_RATE;
+injection_rate_uses_flits = 1;
+
+packet_size = 8;
+use_read_write = 0;
+
+sim_type       = latency;
+sample_period  = 5000;
+warmup_periods = 3;
+sim_count      = 1;
+
+// print_channel_stats not supported in this BookSim2 build

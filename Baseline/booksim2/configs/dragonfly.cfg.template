@@ -1,0 +1,66 @@
+// BookSim2 Dragonfly Configuration Template
+// Reference topology: 9 groups × 4 routers/group × 2 hosts/router = 72 hosts
+// Routing: minimal (deterministic shortest path)
+//
+// Parameters substituted at sweep time (see run_sweep.sh):
+//   INJECTION_RATE  → injection_rate value (= desired ρ)
+//   OUTPUT_PREFIX   → output file prefix
+//
+// Run:
+//   ./booksim dragonfly.cfg.RHO > output/dragonfly/booksim_rho_RHO.log
+//
+// See: https://github.com/booksim/booksim2/tree/master/src/networks
+
+// ========================
+// Router architecture
+// ========================
+num_vcs     = 2;
+vc_buf_size = 256;
+wait_for_tail_credit = 0;
+
+vc_allocator = separable_input_first;
+sw_allocator = separable_input_first;
+alloc_iters  = 1;
+
+credit_delay   = 2;
+routing_delay  = 0;
+vc_alloc_delay = 1;
+sw_alloc_delay = 1;
+st_final_delay = 1;
+
+input_speedup    = 1;
+output_speedup   = 1;
+internal_speedup = 2.0;
+
+// ========================
+// Topology
+// ========================
+// BookSim2 DragonFlyNew formula: k=hosts/router, n=1 (fixed)
+//   a = 2k (routers/group), g = a*k+1 (groups), N = a*k*g
+// k=2 → a=4, g=9, N=72  ← matches 9g×4r×2h reference
+topology = dragonflynew;
+k = 2;
+n = 1;
+
+// ========================
+// Routing
+// ========================
+routing_function = min;   // → looks up min_dragonflynew (registered in dragonfly.cpp)
+
+// ========================
+// Traffic / Simulation
+// ========================
+traffic = uniform;
+injection_rate = INJECTION_RATE;
+injection_rate_uses_flits = 1;
+
+packet_size = 10;
+use_read_write = 0;
+
+sim_type       = latency;
+sample_period  = 5000;
+warmup_periods = 3;
+sim_count      = 3;
+max_samples    = 10;   // cap iterations to avoid non-convergence at high ρ
+
+// print_channel_stats not supported in this BookSim2 build

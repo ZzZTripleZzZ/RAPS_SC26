@@ -1,0 +1,27 @@
+// BookSim2 Dragonfly 10000-node Configuration Template
+// Topology: 10 groups × 10 routers/group × 100 hosts/router = 10000 hosts
+// Matches RAPS run_sweep.py DRAGONFLY_SUITE[2]: build_dragonfly(d=10, a=9, p=100)
+// Routing: minimal
+
+topology = dragonfly;
+
+// (q+1) * k * n = 10 * 10 * 100 = 10000 ✓
+k = 10;
+n = 100;
+q = 9;
+concentration = 100;
+
+routing = min_adapt;
+
+traffic = uniform;
+injection_rate = INJECTION_RATE;
+
+packet_size = 1;
+use_read_write = 0;
+
+sim_type = latency;
+sample_period = 1000;
+max_samples = 10;
+warmup_periods = 3;
+print_channel_stats = 1;
+sim_count = 1;

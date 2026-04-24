@@ -26,9 +26,10 @@ class JobState(Enum):
 
 class CommunicationPattern(Enum):
     """Communication patterns for network traffic modeling."""
-    ALL_TO_ALL  = "all-to-all"    # Every node sends to every other node
-    STENCIL_3D  = "stencil-3d"   # Each node sends to 6 neighbors (±x, ±y, ±z)
-    RANDOM_RING = "random-ring"   # Bidirectional ring (matches GPCNeT RR test)
+    ALL_TO_ALL      = "all-to-all"    # Every node sends to every other node
+    STENCIL_3D      = "stencil-3d"   # Each node sends to 6 neighbors (±x, ±y, ±z)
+    RANDOM_RING     = "random-ring"   # Bidirectional ring (matches GPCNeT RR test)
+    MATRIX_TEMPLATE = "matrix-template"  # Per-pair weights driven by a tiled proxy-app matrix
 
 
 # Standard message sizes for testing (in bytes)
@@ -50,6 +51,8 @@ def normalize_comm_pattern(value):
             return CommunicationPattern.STENCIL_3D
         if key in ("random-ring", "random_ring", "ring", "rr"):
             return CommunicationPattern.RANDOM_RING
+        if key in ("matrix", "matrix-template", "matrix_template", "template"):
+            return CommunicationPattern.MATRIX_TEMPLATE
     raise ValueError(f"Unsupported comm_pattern: {value}")
 
 
@@ -91,6 +94,7 @@ def job_dict(*,
              comm_pattern: CommunicationPattern | str | None = CommunicationPattern.ALL_TO_ALL,
              message_size: int | None = None,  # bytes per message (None = raw bandwidth model)
              message_size_bytes: int | None = MESSAGE_SIZE_64K,
+             traffic_template=None,  # optional M×M np.ndarray weights (MATRIX_TEMPLATE pattern)
              ):
     """ Return job info dictionary """
     comm_pattern = normalize_comm_pattern(comm_pattern)
@@ -136,6 +140,7 @@ def job_dict(*,
         'comm_pattern': comm_pattern,
         'message_size': message_size,
         'message_size_bytes': message_size,
+        'traffic_template': traffic_template,
     }
 
 
@@ -226,6 +231,7 @@ class Job:
         self.comm_pattern = CommunicationPattern.ALL_TO_ALL
         self.message_size = MESSAGE_SIZE_64K
         self.message_size_bytes = MESSAGE_SIZE_64K
+        self.traffic_template = None
 
         # If a job dict was given, override the values from the job_dict:
         for key, value in job_dict.items():

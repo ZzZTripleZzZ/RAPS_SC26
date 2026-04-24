@@ -1,0 +1,80 @@
+# SST-Macro halo3d-26 on Dragonfly — Tiling Validation
+# ======================================================
+# Topology: 33 groups × 16 routers/group × 2 hosts/router = 1056 nodes
+# Matches RAPS dragonfly bully-victim topology (h=32, alltoall inter-group)
+# App: halo3d-26 — stencil proxy for LULESH/HPGMG communication pattern
+#
+# Template: run_tiling_validation.sh substitutes:
+#   N_RANKS     → total MPI ranks (must be a perfect cube: 64, 216, 512, ...)
+#   PEX PEY PEZ → 3D process grid dimensions (PEX × PEY × PEZ = N_RANKS)
+#   GRID_NX GRID_NY GRID_NZ → local grid size per rank (controls injection rate)
+#   N_ITERATIONS → number of halo exchange iterations
+#
+# Usage: sstmac -f <this_file>
+
+node {
+  app1 {
+    name = halo3d-26
+    launch_cmd = aprun -n N_RANKS -N 2
+    indexing = block
+    allocation = first_available
+    argv = -pex PEX -pey PEY -pez PEZ -nx GRID_NX -ny GRID_NY -nz GRID_NZ -iterations N_ITERATIONS -vars 1 -sleep 0 -print 1
+    start = 0ms
+  }
+
+  nic {
+    name = snappr
+    mtu = 4KB
+    credits = 64KB
+    bandwidth = 25.0GB/s
+    latency = 50ns
+    injection {
+      bandwidth = 25.0GB/s
+      latency = 50ns
+      credits = 64KB
+    }
+  }
+
+  memory {
+    name = snappr
+    channel_bandwidth = 100GB/s
+    num_channels = 1
+    latency = 10ns
+  }
+
+  proc {
+    ncores = 2
+    frequency = 2.5GHz
+  }
+
+  name = simple
+}
+
+switch {
+  name = snappr
+  mtu = 4KB
+  credits = 64KB
+  link {
+    bandwidth = 25.0GB/s
+    latency = 100ns
+    credits = 64KB
+  }
+  logp {
+    bandwidth = 25GB/s
+    hop_latency = 100ns
+    out_in_latency = 100ns
+  }
+  router {
+    name = dragonfly_minimal
+    seed = 42
+  }
+}
+
+topology {
+  name = dragonfly
+  # 16 routers/group, 33 groups → h = G-1 = 32 (even ✓)
+  geometry = [16, 33]
+  concentration = 2
+  h = 32
+  inter_group = alltoall
+}

@@ -83,9 +83,7 @@ def subsample_hosts(G, num_hosts):
     return G
 
 
-# =============================================================================
 # Adaptive Routing Functions for Fat-Tree
-# =============================================================================
 
 def parse_fattree_host(name: str) -> Tuple[int, int, int]:
     """Parse a fat-tree host name into (pod, edge, host_idx).

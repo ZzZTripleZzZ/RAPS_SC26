@@ -20,6 +20,7 @@ from .network import NetworkTestWorkload
 from .inter_job_congestion import InterJobCongestionWorkload
 from .allocation_test import AllocationTestWorkload
 from .bully_victim import BullyVictimWorkload
+from .template_mix import TemplateMixWorkload
 from .utils import plot_job_hist
 
 
@@ -62,6 +63,7 @@ class Workload(
     InterJobCongestionWorkload,
     AllocationTestWorkload,
     BullyVictimWorkload,
+    TemplateMixWorkload,
     Calculon,
     HPL
 ):

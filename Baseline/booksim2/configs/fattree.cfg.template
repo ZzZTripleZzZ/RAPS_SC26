@@ -1,0 +1,58 @@
+// BookSim2 Fat-tree Configuration Template
+// Reference topology: k=4 fat-tree, 16 servers, ECMP routing
+//
+// Parameters substituted at sweep time (see run_sweep.sh):
+//   INJECTION_RATE  → injection_rate value (= desired ρ)
+//
+// ========================
+// Router architecture (from BookSim2 ftreeconfig example)
+// ========================
+num_vcs     = 16;
+vc_buf_size = 8;
+wait_for_tail_credit = 1;
+
+vc_allocator = islip;
+sw_allocator = islip;
+alloc_iters  = 2;
+
+credit_delay   = 2;
+routing_delay  = 0;
+vc_alloc_delay = 1;
+sw_alloc_delay = 1;
+st_final_delay = 1;
+
+input_speedup    = 1;
+output_speedup   = 1;
+internal_speedup = 1.0;
+
+// ========================
+// Topology
+// ========================
+// 3-level k=4 fat-tree (topology = fattree, from BookSim2 ftreeconfig example)
+topology = fattree;
+k  = 4;
+n  = 3;
+xr = 2;
+yr = 2;
+
+// ========================
+// Routing
+// ========================
+routing_function = nca;   // → nca_fattree (nearest common ancestor, ECMP)
+
+// ========================
+// Traffic / Simulation
+// ========================
+traffic = uniform;
+injection_rate = INJECTION_RATE;
+
+packet_size = 1;
+use_read_write = 0;
+
+sim_type       = latency;
+sample_period  = 1000;
+warmup_periods = 3;
+sim_count      = 3;
+max_samples    = 10;   // cap iterations to avoid non-convergence at high ρ
+
+// print_channel_stats not supported in this BookSim2 build

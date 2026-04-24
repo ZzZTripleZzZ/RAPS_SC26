@@ -6,6 +6,13 @@ data/lassen/
 # Output directories
 output/
 raps-output-*/
+simulation_results/
+
+# Generated paper figures (local outputs, not source)
+main/
+
+# Plot scripts (consolidated here, not committed)
+scripts/plots/
 
 # Python cache
 __pycache__/
@@ -19,6 +26,8 @@ __pycache__/
 dist/
 build/
 *.whl
+*.npz
+*.prof
 
 # Virtual environments
 venv/
@@ -50,6 +59,7 @@ htmlcov/
 .DS_Store
 Thumbs.db
 *.lnk
+.shell-completion-cache
 
 # Temporary files
 *.tmp
@@ -66,8 +76,10 @@ Thumbs.db
 # Compiled binaries
 bin/
 *.o
-*.out
 *.exe
+
+# RL training logs (ndt branch)
+ppo_raps_logs/
 
 # Data
 data/raw_traces/
@@ -80,3 +92,26 @@ data/matrices/*.h5
 *.ckpt
 models/
 checkpoints/
+
+# Paper upload review artifacts (not to be committed)
+_SC26__Predictive_ExaDigit*.pdf
+_SC26__Predictive_ExaDigit*.zip
+paper_upload_review/
+
+# SLURM scripts and logs (local, not to be committed)
+slurm/
+
+# Baseline: third-party simulator source trees (nested git repos or build artifacts)
+# These are large and should be cloned/built locally; use git submodule for ns3/simgrid
+Baseline/ns3/ns3-src/
+Baseline/ns3/scratch/
+Baseline/ns3/output/
+Baseline/simgrid/simgrid-src/
+Baseline/simgrid/simgrid-build/
+Baseline/simgrid/output/
+Baseline/booksim2/build/src/
+Baseline/booksim2/build/runfiles/
+Baseline/hardware/output/
+Baseline/sst-macro/output/
+Baseline/sst-macro/multi_job/node_files/
+Baseline/sst-macro/multi_job/torus_interleaved/

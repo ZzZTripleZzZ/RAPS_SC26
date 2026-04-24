@@ -1,41 +1,5 @@
 #!/usr/bin/env python3
-"""
-RAPS Use Case Evaluation Script
-================================
-
-Implements the four operational use cases from Section "ExaDigiT/RAPS as a Versatile Tool":
-
-  UC1: Adaptive Routing and Congestion Mitigation
-       - Compares static minimal routing vs adaptive routing on Dragonfly
-       - Measures bully effect, job slowdown CDF, global throughput
-       - Congestion heatmap (Time x Link utilization)
-
-  UC2: Scheduler Policy Optimization
-       - Compares FCFS vs SJF under realistic network interference
-       - Measures system utilization, wait time distribution, fragmentation
-       - System utilization stacked chart (Running/Idle/Fragmented)
-       - Prediction error from dilation (planned vs actual completion)
-
-  UC3: Topology-Aware Node Placement
-       - Compares random vs contiguous placement
-       - Measures hop count distribution, global/local traffic ratio
-       - Application speedup vs communication intensity
-
-  UC4: Energy Cost of Congestion
-       - Quantifies hidden energy costs from network dilation
-       - Measures energy-to-solution, power profile
-       - Static power tax (dynamic/static power decomposition)
-
-Each use case runs a full DES with the RAPS Engine.
-
-Usage:
-    python src/run_use_cases.py                     # Run all use cases
-    python src/run_use_cases.py --uc 1              # Run only UC1
-    python src/run_use_cases.py --uc 1 2            # Run UC1 and UC2
-    python src/run_use_cases.py --system frontier    # Use Frontier config
-    python src/run_use_cases.py --duration 15        # 15-minute simulations
-    python src/run_use_cases.py --quick              # Quick mode (5 min, fewer jobs)
-"""
+"""RAPS use case evaluation for routing, scheduling, placement, and energy analysis."""
 
 import sys
 import time
@@ -103,9 +67,7 @@ except ImportError:
     PLOTTING_AVAILABLE = False
 
 
-# ==========================================
 # Node count override (reused from run_frontier.py logic)
-# ==========================================
 
 # Fat-tree k values: k^3/4 hosts
 FATTREE_K = {
@@ -214,9 +176,7 @@ def _override_system_config_uc(system_name: str, node_count: int) -> SystemConfi
     return SystemConfig.model_validate(data)
 
 
-# ==========================================
 # Configuration
-# ==========================================
 
 OUTPUT_DIR = PROJECT_ROOT / "output" / "use_cases"
 FIGURES_DIR = OUTPUT_DIR / "figures"
@@ -257,9 +217,7 @@ _FIGH = 2.0   # ~7:4 ratio
 _DPI  = 300
 
 
-# ==========================================
 # SimConfig with proper routing override
-# ==========================================
 
 class UCSimConfig(SingleSimConfig):
     """SimConfig for use case experiments."""
@@ -279,9 +237,7 @@ def override_system_routing(sim_config, routing, ugal_threshold=2.0, valiant_bia
     return sim_config
 
 
-# ==========================================
 # Workload Generation
-# ==========================================
 
 def generate_workload(
     num_jobs: int = 30,
@@ -291,6 +247,7 @@ def generate_workload(
     max_duration: int = 600,
     seed: int = 42,
     mean_inter_arrival: float = 60.0,
+    mix: str | None = None,
 ) -> List[Job]:
     """
     Generate synthetic workload with log-normal job sizes and Poisson arrivals.
@@ -301,9 +258,28 @@ def generate_workload(
     mean_inter_arrival : float
         Mean seconds between job arrivals (Poisson process). Default 60s.
         Set lower (e.g. 10–20s) for high-load scenarios.
+    mix : {'a','b','c'}, optional
+        When provided, jobs use ``CommunicationPattern.MATRIX_TEMPLATE`` driven
+        by tiled proxy-app traffic matrices (paper §6 sensitivity analysis):
+          'a' → 80% stencil + 20% all-to-all
+          'b' → 20% stencil + 80% all-to-all
+          'c' → 100% stencil
+        When None (default), jobs use the synthetic STENCIL_3D pattern with
+        MINI_APP_PATTERNS above.
     """
     rng = np.random.default_rng(seed)
     jobs = []
+
+    # Mix-ratio lookup and proxy-app pool selection.
+    _MIX_RATIOS = {'a': 0.80, 'b': 0.20, 'c': 1.00}
+    mix = mix.lower() if isinstance(mix, str) else mix
+    mix_stencil_frac = _MIX_RATIOS.get(mix)
+    if mix is not None and mix_stencil_frac is None:
+        raise ValueError(f"Unknown mix={mix!r}; expected 'a', 'b', or 'c'.")
+    if mix_stencil_frac is not None:
+        from raps.workloads.traffic_templates import get_template_for_job
+        STENCIL_POOL = ('lulesh', 'hpgmg', 'comd')
+        A2A_POOL = ('cosp2', 'quicksilver')
 
     # Log-normal job sizes (heavy-tailed, biased toward smaller jobs)
     raw_sizes = rng.lognormal(mean=3, sigma=1.2, size=num_jobs)
@@ -329,8 +305,15 @@ def generate_workload(
         duration = int(durations[i])
 
         # Assign mini-app and communication pattern
-        mini_app = mini_app_names[i % len(mini_app_names)]
-        comm_pattern = MINI_APP_PATTERNS[mini_app]
+        if mix_stencil_frac is not None:
+            # Mix A/B/C: proxy-app matrix templates under MATRIX_TEMPLATE.
+            is_stencil = rng.random() < mix_stencil_frac
+            pool = STENCIL_POOL if is_stencil else A2A_POOL
+            mini_app = str(rng.choice(pool))
+            comm_pattern = CommunicationPattern.MATRIX_TEMPLATE
+        else:
+            mini_app = mini_app_names[i % len(mini_app_names)]
+            comm_pattern = MINI_APP_PATTERNS[mini_app]
 
         # Generate network traces based on pattern
         trace_quanta = 15
@@ -352,6 +335,10 @@ def generate_workload(
         cpu_trace = [cpu_val] * trace_len
         gpu_trace = [gpu_val] * trace_len
 
+        traffic_template = None
+        if comm_pattern == CommunicationPattern.MATRIX_TEMPLATE:
+            traffic_template = get_template_for_job(mini_app, job_size)
+
         job = Job(job_dict(
             id=i + 1,
             name=f"job_{i+1}_{mini_app}",
@@ -369,6 +356,7 @@ def generate_workload(
             expected_run_time=duration,
             time_limit=duration * 2,
             end_state="COMPLETED",
+            traffic_template=traffic_template,
         ))
         job.mini_app = mini_app
         # Store original expected runtime for prediction error analysis
@@ -397,6 +385,7 @@ def clone_jobs(jobs: List[Job]) -> List[Job]:
             expected_run_time=j.expected_run_time,
             time_limit=j.time_limit,
             end_state="COMPLETED",
+            traffic_template=getattr(j, 'traffic_template', None),
         )
         new_job = Job(d)
         new_job.mini_app = getattr(j, 'mini_app', 'unknown')
@@ -406,9 +395,7 @@ def clone_jobs(jobs: List[Job]) -> List[Job]:
     return cloned
 
 
-# ==========================================
 # Post-Simulation Analysis Functions
-# ==========================================
 
 def compute_hop_counts(engine):
     """
@@ -690,9 +677,7 @@ def compute_power_decomposition(engine):
     return result
 
 
-# ==========================================
 # Incremental CSV Helpers
-# ==========================================
 
 def _load_done_labels(csv_path) -> set:
     """Return set of variant labels already saved in a result CSV."""
@@ -721,9 +706,7 @@ def _append_result_to_csv(csv_path, result) -> None:
     print(f"  [Saved] {csv_path.name} <- {result.label}")
 
 
-# ==========================================
 # DES Execution
-# ==========================================
 
 @dataclass
 class SimResult:
@@ -1102,9 +1085,7 @@ def print_result(result: SimResult, indent: str = "  "):
               f"Dynamic: {result.dynamic_power_kw:.1f} kW")
 
 
-# ==========================================
 # UC1: Adaptive Routing and Congestion Mitigation
-# ==========================================
 
 def _get_topology(system: str) -> str:
     """Return the network topology for a system."""
@@ -1222,9 +1203,7 @@ def run_uc1_routing(jobs, system, duration_minutes, node_count=None, delta_t=1,
     return results
 
 
-# ==========================================
 # UC2: Scheduler Policy Optimization
-# ==========================================
 
 def run_uc2_scheduling(jobs, system, duration_minutes, node_count=None, delta_t=1,
                        resume_csv=None, done_labels=None, checkpoint_dir=None, **kwargs):
@@ -1340,9 +1319,7 @@ def run_uc2_scheduling(jobs, system, duration_minutes, node_count=None, delta_t=
     return results
 
 
-# ==========================================
 # UC3: Topology-Aware Node Placement
-# ==========================================
 
 def run_uc3_placement(jobs, system, duration_minutes, node_count=None, delta_t=1,
                       resume_csv=None, done_labels=None, checkpoint_dir=None, **kwargs):
@@ -1461,9 +1438,7 @@ def run_uc3_placement(jobs, system, duration_minutes, node_count=None, delta_t=1
     return results
 
 
-# ==========================================
 # UC4: Energy Cost of Congestion
-# ==========================================
 
 def run_uc4_energy(jobs, system, duration_minutes, node_count=None, delta_t=1,
                    resume_csv=None, done_labels=None, until_complete=True,
@@ -1613,10 +1588,7 @@ def run_uc4_energy(jobs, system, duration_minutes, node_count=None, delta_t=1,
     return results
 
 
-# ==========================================
-# Plotting  (SC single-column style, no subfigures)
-# figsize = (_FIGW, _FIGH) = (3.5 in × 2.0 in)  ~7:4
-# ==========================================
+# Plotting
 
 def _ygrid(ax):
     ax.yaxis.grid(True, linestyle='--', alpha=0.25, linewidth=0.7, color='#888')
@@ -1648,7 +1620,7 @@ def _bar_single(ax, labels, values, colors, ylabel, baseline=None, yscale='linea
     _ygrid(ax)
 
 
-# ── UC1 ──────────────────────────────────────────────────────────────────────
+# UC1
 
 def plot_uc1_slowdown_cdf(results, save_path):
     """CDF of per-job slowdown factors — one line per routing algo."""
@@ -1705,7 +1677,7 @@ def plot_uc1_congestion_heatmap(results, save_dir):
     _save_fig(fig, Path(save_dir) / "uc1_congestion.png")
 
 
-# ── UC2 ──────────────────────────────────────────────────────────────────────
+# UC2
 
 def plot_uc2_wait_times(results, save_dir):
     """
@@ -1854,7 +1826,7 @@ def plot_uc2_prediction_error(results, save_dir):
         _save_fig(fig, save_dir / f"uc2_pred_error_{policy}.png")
 
 
-# ── UC3 ──────────────────────────────────────────────────────────────────────
+# UC3
 
 def plot_uc3_placement(results, save_dir):
     """
@@ -1933,7 +1905,7 @@ def plot_uc3_speedup_vs_comm(results, save_path):
     _save_fig(fig, save_path)
 
 
-# ── UC4 ──────────────────────────────────────────────────────────────────────
+# UC4
 
 def plot_uc4_energy(results, save_dir):
     """
@@ -1979,9 +1951,7 @@ def plot_uc4_energy(results, save_dir):
     _save_fig(fig, save_dir / "uc4_power.png")
 
 
-# ==========================================
 # CSV-based plot regeneration
-# ==========================================
 
 def _load_uc_results_from_csv(csv_path, key_col):
     """Load UCResult objects from a saved CSV. Only aggregate fields are populated."""
@@ -2052,9 +2022,7 @@ def regenerate_plots_from_csv(output_dir, figures_dir, uc_to_run):
             print(f"  [SKIP] {csv4} not found")
 
 
-# ==========================================
 # Main
-# ==========================================
 
 def main():
     parser = argparse.ArgumentParser(
@@ -2083,6 +2051,9 @@ def main():
                         help='Regenerate UC3/UC4 plots from existing CSVs (no simulation)')
     parser.add_argument('--force', action='store_true',
                         help='Force re-run even if result CSVs already exist')
+    parser.add_argument('--mix', choices=['a', 'b', 'c'], default=None,
+                        help='Workload sensitivity mix (paper §6): a/b/c use '
+                             'tiled proxy-app matrices instead of synthetic patterns')
 
     args = parser.parse_args()
 
@@ -2093,6 +2064,8 @@ def main():
         suffix = f"{args.system}"
         if args.nodes:
             suffix += f"_n{args.nodes}"
+        if args.mix:
+            suffix += f"_mix{args.mix}"
         output_dir = PROJECT_ROOT / "output" / "use_cases" / suffix
     figures_dir = output_dir / "figures"
 
@@ -2155,6 +2128,7 @@ def main():
         min_nodes=min_job_nodes,
         max_nodes=max_job_nodes,
         mean_inter_arrival=mean_inter_arrival,
+        mix=args.mix,
     )
     print(f"  Generated {len(jobs)} jobs")
     sizes = [j.nodes_required for j in jobs]

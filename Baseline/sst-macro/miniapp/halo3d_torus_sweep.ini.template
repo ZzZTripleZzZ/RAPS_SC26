@@ -1,0 +1,64 @@
+# SST-Macro halo3d-26 on 3D torus (SNAPPR model)
+# Topology: 8×8×8 torus = 512 nodes, concentration=1
+# Matches RAPS torus3d stencil baseline and BookSim2 torus config
+# Traffic: halo3d-26 nearest-neighbor stencil exchange
+#
+# Template: GRID_NX, GRID_NY, GRID_NZ, N_ITERATIONS substituted by run script
+
+node {
+  app1 {
+    name = halo3d-26
+    launch_cmd = aprun -n 512 -N 1
+    indexing = block
+    allocation = first_available
+    argv = -pex 8 -pey 8 -pez 8 -nx GRID_NX -ny GRID_NY -nz GRID_NZ -iterations N_ITERATIONS -vars 1 -sleep 0 -print 1
+    start = 0ms
+  }
+  nic {
+    name = snappr
+    mtu = 4KB
+    credits = 64KB
+    bandwidth = 9.6GB/s
+    latency = 50ns
+    injection {
+      bandwidth = 9.6GB/s
+      latency = 50ns
+      credits = 64KB
+    }
+  }
+  memory {
+    name = snappr
+    channel_bandwidth = 100GB/s
+    num_channels = 1
+    latency = 15ns
+  }
+  proc {
+    ncores = 1
+    frequency = 2.1GHz
+  }
+  name = simple
+}
+switch {
+  name = snappr
+  mtu = 4KB
+  credits = 64KB
+  link {
+    bandwidth = 9.6GB/s
+    latency = 100ns
+    credits = 64KB
+  }
+  logp {
+    bandwidth = 9.6GB/s
+    hop_latency = 100ns
+    out_in_latency = 2us
+  }
+  router {
+    name = torus_minimal
+  }
+}
+topology {
+  name = torus
+  seed = 14
+  geometry = [8,8,8]
+  concentration = 1
+}

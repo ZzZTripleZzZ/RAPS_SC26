@@ -1,28 +1,5 @@
 #!/usr/bin/env python3
-"""
-Frontier Scaling Experiments
-=============================
-Benchmark runner for RAPS network simulation on OLCF Frontier.
-
-Sweeps over:
-  - System traces:   lassen (fat-tree), frontier (dragonfly)
-  - Node counts:     100, 1_000, 10_000
-  - Time quanta:     0.1s, 1s, 10s, 60s
-  - Repeats:         3 (for statistical averaging)
-
-Features:
-  - Incremental CSV saving: results written after each experiment
-  - Resume support: skips already-completed experiments on restart
-  - Sorted execution: fast experiments first to maximize progress per job
-  - Lassen uses real telemetry data; Frontier uses synthetic workloads
-
-Simulation duration: 12 hours (simulated time).
-
-Output
-------
-  output/frontier_scaling/results.csv          — combined metrics (incremental)
-  output/frontier_scaling/<name>/              — per-experiment RAPS output
-"""
+"""Benchmark runner for RAPS network simulation scaling experiments."""
 import sys
 import os
 import csv

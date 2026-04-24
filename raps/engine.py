@@ -30,9 +30,11 @@ from raps.power import (
 from raps.network import (
     NetworkModel,
     apply_job_slowdown,
+    compute_stall_ratio,
     compute_system_network_stats,
     simulate_inter_job_congestion
 )
+from raps.network.calibration import get_stall_kappa
 from raps.telemetry import Telemetry
 from raps.cooling import ThermoFluidsModel
 from raps.flops import FLOPSManager
@@ -705,23 +707,38 @@ class Engine:
         # not the global aggregate, so routing algorithms that spread load more
         # evenly receive proportionally lower slowdowns.
         # Formula: S_J = 1 + (η_J − u_onset)² / [2(1 − η_J)], u_onset < η_J < 1.
-        # When η_J ≥ 1.0 the job was already dilated by apply_job_slowdown above.
-        if net_utils:
-            u_onset = getattr(self.network_model, 'u_onset', 0.0) if self.network_model else 0.0
+        # u_onset is per-job: elevated for dragonfly jobs confined to a single
+        # group (paper Table 3 intra-group regime).
+        #
+        # Sub-saturation (u_onset < η_J < 1.0) is paid *incrementally* each tick:
+        # add (S_J - 1) * time_delta seconds to the job's expected_run_time.  This
+        # lets sustained congestion accumulate across ticks rather than firing
+        # once, per the paper.  Traces are not multiplicatively stretched here;
+        # only the scheduled completion time is pushed out.
+        #
+        # Saturation (η_J ≥ 1.0) was already handled by the earlier
+        # apply_job_slowdown call (one-time linear dilation of runtime + traces).
+        if net_utils and self.network_model:
             for i, job in enumerate(self.running):
-                if i < len(net_congs) and net_congs[i] > 0:
-                    eta_j = net_congs[i]
-                    if u_onset < eta_j < 1.0:
-                        slowdown_j = 1.0 + (eta_j - u_onset) ** 2 / (2.0 * (1.0 - eta_j))
-                        apply_job_slowdown(
-                            job=job,
-                            max_throughput=1.0,
-                            net_util=net_utils[i],
-                            net_cong=slowdown_j,
-                            net_tx=net_tx_list[i] if i < len(net_tx_list) else 0.0,
-                            net_rx=net_rx_list[i] if i < len(net_rx_list) else 0.0,
-                            debug=self.debug,
-                        )
+                if i >= len(net_congs) or net_congs[i] <= 0:
+                    continue
+                eta_j = net_congs[i]
+                u_onset = self.network_model.get_u_onset(job)
+                if u_onset < eta_j < 1.0:
+                    s_j = 1.0 + (eta_j - u_onset) ** 2 / (2.0 * (1.0 - eta_j))
+                    extra_seconds = int(round((s_j - 1.0) * time_delta))
+                    if extra_seconds > 0 and job.expected_run_time is not None:
+                        job.expected_run_time += extra_seconds
+                        if job.end_time is not None and job.start_time is not None:
+                            job.end_time = job.start_time + job.expected_run_time
+                    job.slowdown_factor = max(getattr(job, 'slowdown_factor', 1.0), s_j)
+                    job.stall_ratio = compute_stall_ratio(job.slowdown_factor)
+                    # Reflect the updated peak values in the per-tick aggregates
+                    # that feed avg_stall_ratio / max_slowdown reporting below.
+                    if i < len(stall_ratios):
+                        stall_ratios[i] = job.stall_ratio
+                    if i < len(slowdown_factors):
+                        slowdown_factors[i] = max(slowdown_factors[i], s_j)
         # ---
 
         # --- Optional link-load snapshot for chord-diagram visualization ---
@@ -777,8 +794,9 @@ class Engine:
                                                                    slowdown_factors=slowdown_factors
                                                                    )
             slowdown_per_job = sum(slowdown_factors) / len(slowdown_factors) if len(slowdown_factors) != 0 else 0
-            avg_stall_ratio = sum(stall_ratios) / len(stall_ratios) if stall_ratios else 0.0
-            max_stall_ratio = max(stall_ratios) if stall_ratios else 0.0
+            kappa = get_stall_kappa(getattr(self.network_model, 'topology', None))
+            avg_stall_ratio = kappa * (sum(stall_ratios) / len(stall_ratios)) if stall_ratios else 0.0
+            max_stall_ratio = kappa * max(stall_ratios) if stall_ratios else 0.0
 
             # Per-link posted_pkts / tx_paused using accumulated global link loads
             mean_pkt_size = self.config.get('MEAN_PACKET_SIZE_BYTES', 116)

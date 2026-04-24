@@ -1,0 +1,2799 @@
+{
+  "num_nodes": 64,
+  "num_edges": 389,
+  "total_bytes": 205461932976.73462,
+  "nodes": [
+    {
+      "id": 0,
+      "rank": 0,
+      "send_bytes": 3152182110.0070763,
+      "recv_bytes": 3052327336.9868913,
+      "degree": 6
+    },
+    {
+      "id": 1,
+      "rank": 1,
+      "send_bytes": 3361631345.2503605,
+      "recv_bytes": 3119018475.477319,
+      "degree": 6
+    },
+    {
+      "id": 2,
+      "rank": 2,
+      "send_bytes": 2963130666.90853,
+      "recv_bytes": 3131470986.2335057,
+      "degree": 6
+    },
+    {
+      "id": 3,
+      "rank": 3,
+      "send_bytes": 2746592128.986667,
+      "recv_bytes": 4711718864.786613,
+      "degree": 6
+    },
+    {
+      "id": 4,
+      "rank": 4,
+      "send_bytes": 3466996267.397827,
+      "recv_bytes": 3186577075.4726286,
+      "degree": 6
+    },
+    {
+      "id": 5,
+      "rank": 5,
+      "send_bytes": 4132591448.68402,
+      "recv_bytes": 2963228090.2017174,
+      "degree": 6
+    },
+    {
+      "id": 6,
+      "rank": 6,
+      "send_bytes": 3704591950.4575315,
+      "recv_bytes": 3263136381.190487,
+      "degree": 6
+    },
+    {
+      "id": 7,
+      "rank": 7,
+      "send_bytes": 4174990929.641855,
+      "recv_bytes": 3400964962.372879,
+      "degree": 6
+    },
+    {
+      "id": 8,
+      "rank": 8,
+      "send_bytes": 3059545539.902934,
+      "recv_bytes": 2624510966.657685,
+      "degree": 6
+    },
+    {
+      "id": 9,
+      "rank": 9,
+      "send_bytes": 3068885803.928069,
+      "recv_bytes": 3500355439.4874535,
+      "degree": 6
+    },
+    {
+      "id": 10,
+      "rank": 10,
+      "send_bytes": 3027578382.145689,
+      "recv_bytes": 3267693293.3772388,
+      "degree": 6
+    },
+    {
+      "id": 11,
+      "rank": 11,
+      "send_bytes": 2846052846.8945775,
+      "recv_bytes": 2469291821.560288,
+      "degree": 6
+    },
+    {
+      "id": 12,
+      "rank": 12,
+      "send_bytes": 3467911048.2186937,
+      "recv_bytes": 3690560674.104347,
+      "degree": 6
+    },
+    {
+      "id": 13,
+      "rank": 13,
+      "send_bytes": 3029827912.5390253,
+      "recv_bytes": 2936875863.4960995,
+      "degree": 6
+    },
+    {
+      "id": 14,
+      "rank": 14,
+      "send_bytes": 3709820651.3478217,
+      "recv_bytes": 2558849039.3433785,
+      "degree": 6
+    },
+    {
+      "id": 15,
+      "rank": 15,
+      "send_bytes": 2472834952.1805086,
+      "recv_bytes": 4033305466.817786,
+      "degree": 6
+    },
+    {
+      "id": 16,
+      "rank": 16,
+      "send_bytes": 3910523372.70281,
+      "recv_bytes": 3311197924.775073,
+      "degree": 6
+    },
+    {
+      "id": 17,
+      "rank": 17,
+      "send_bytes": 4136079014.7492075,
+      "recv_bytes": 4084998658.1439133,
+      "degree": 6
+    },
+    {
+      "id": 18,
+      "rank": 18,
+      "send_bytes": 2873176121.241786,
+      "recv_bytes": 3928118926.107093,
+      "degree": 6
+    },
+    {
+      "id": 19,
+      "rank": 19,
+      "send_bytes": 2363078278.8714943,
+      "recv_bytes": 2698292549.5344176,
+      "degree": 6
+    },
+    {
+      "id": 20,
+      "rank": 20,
+      "send_bytes": 2537570462.6893826,
+      "recv_bytes": 4187567640.16755,
+      "degree": 6
+    },
+    {
+      "id": 21,
+      "rank": 21,
+      "send_bytes": 2890594423.686347,
+      "recv_bytes": 3498225697.705949,
+      "degree": 6
+    },
+    {
+      "id": 22,
+      "rank": 22,
+      "send_bytes": 2991980570.4740744,
+      "recv_bytes": 3123784984.406585,
+      "degree": 6
+    },
+    {
+      "id": 23,
+      "rank": 23,
+      "send_bytes": 2993235740.6830916,
+      "recv_bytes": 3258939310.712723,
+      "degree": 7
+    },
+    {
+      "id": 24,
+      "rank": 24,
+      "send_bytes": 3350173623.728066,
+      "recv_bytes": 2584966961.400962,
+      "degree": 6
+    },
+    {
+      "id": 25,
+      "rank": 25,
+      "send_bytes": 3497508503.723323,
+      "recv_bytes": 2908918140.120368,
+      "degree": 6
+    },
+    {
+      "id": 26,
+      "rank": 26,
+      "send_bytes": 3475065666.475753,
+      "recv_bytes": 3619576123.0999646,
+      "degree": 6
+    },
+    {
+      "id": 27,
+      "rank": 27,
+      "send_bytes": 2612169079.809448,
+      "recv_bytes": 2992486767.255616,
+      "degree": 6
+    },
+    {
+      "id": 28,
+      "rank": 28,
+      "send_bytes": 3180762727.095894,
+      "recv_bytes": 4129481996.84389,
+      "degree": 6
+    },
+    {
+      "id": 29,
+      "rank": 29,
+      "send_bytes": 3929789146.586415,
+      "recv_bytes": 3525570049.984768,
+      "degree": 6
+    },
+    {
+      "id": 30,
+      "rank": 30,
+      "send_bytes": 2912241172.2278996,
+      "recv_bytes": 2909018752.5714684,
+      "degree": 6
+    },
+    {
+      "id": 31,
+      "rank": 31,
+      "send_bytes": 2578592044.074408,
+      "recv_bytes": 2431675060.7949696,
+      "degree": 6
+    },
+    {
+      "id": 32,
+      "rank": 32,
+      "send_bytes": 3424061352.208001,
+      "recv_bytes": 4724832200.865458,
+      "degree": 6
+    },
+    {
+      "id": 33,
+      "rank": 33,
+      "send_bytes": 3531309493.7274513,
+      "recv_bytes": 2472107503.195401,
+      "degree": 6
+    },
+    {
+      "id": 34,
+      "rank": 34,
+      "send_bytes": 2673650192.7198076,
+      "recv_bytes": 2816913842.1237617,
+      "degree": 6
+    },
+    {
+      "id": 35,
+      "rank": 35,
+      "send_bytes": 4328709357.968915,
+      "recv_bytes": 3131019498.984721,
+      "degree": 6
+    },
+    {
+      "id": 36,
+      "rank": 36,
+      "send_bytes": 2859747654.0842648,
+      "recv_bytes": 3590321666.5860386,
+      "degree": 6
+    },
+    {
+      "id": 37,
+      "rank": 37,
+      "send_bytes": 3169873167.310463,
+      "recv_bytes": 3711531809.8891635,
+      "degree": 6
+    },
+    {
+      "id": 38,
+      "rank": 38,
+      "send_bytes": 3283679304.243055,
+      "recv_bytes": 2426101623.510009,
+      "degree": 6
+    },
+    {
+      "id": 39,
+      "rank": 39,
+      "send_bytes": 4188000202.3687673,
+      "recv_bytes": 3163319378.147431,
+      "degree": 7
+    },
+    {
+      "id": 40,
+      "rank": 40,
+      "send_bytes": 2938671383.631095,
+      "recv_bytes": 2891671046.6994953,
+      "degree": 6
+    },
+    {
+      "id": 41,
+      "rank": 41,
+      "send_bytes": 3313100852.813201,
+      "recv_bytes": 2867603951.477289,
+      "degree": 6
+    },
+    {
+      "id": 42,
+      "rank": 42,
+      "send_bytes": 2913689015.8869576,
+      "recv_bytes": 3004379519.916758,
+      "degree": 6
+    },
+    {
+      "id": 43,
+      "rank": 43,
+      "send_bytes": 2921464929.0556126,
+      "recv_bytes": 3300573687.335423,
+      "degree": 6
+    },
+    {
+      "id": 44,
+      "rank": 44,
+      "send_bytes": 2897676910.2036757,
+      "recv_bytes": 3004537606.3911304,
+      "degree": 6
+    },
+    {
+      "id": 45,
+      "rank": 45,
+      "send_bytes": 2830443510.5749283,
+      "recv_bytes": 2663138987.657926,
+      "degree": 6
+    },
+    {
+      "id": 46,
+      "rank": 46,
+      "send_bytes": 3216002298.029825,
+      "recv_bytes": 2985102796.652082,
+      "degree": 6
+    },
+    {
+      "id": 47,
+      "rank": 47,
+      "send_bytes": 2221618146.38913,
+      "recv_bytes": 3510200929.8001766,
+      "degree": 6
+    },
+    {
+      "id": 48,
+      "rank": 48,
+      "send_bytes": 2484687251.7090693,
+      "recv_bytes": 3548179467.6063843,
+      "degree": 6
+    },
+    {
+      "id": 49,
+      "rank": 49,
+      "send_bytes": 2435110658.3086004,
+      "recv_bytes": 2854471560.4869766,
+      "degree": 6
+    },
+    {
+      "id": 50,
+      "rank": 50,
+      "send_bytes": 2750907892.2678423,
+      "recv_bytes": 4199737010.6001015,
+      "degree": 6
+    },
+    {
+      "id": 51,
+      "rank": 51,
+      "send_bytes": 4232669762.4209595,
+      "recv_bytes": 2723936300.7562723,
+      "degree": 6
+    },
+    {
+      "id": 52,
+      "rank": 52,
+      "send_bytes": 3167025270.9576797,
+      "recv_bytes": 3595889813.3069506,
+      "degree": 6
+    },
+    {
+      "id": 53,
+      "rank": 53,
+      "send_bytes": 3775044722.4091334,
+      "recv_bytes": 3268859420.9969425,
+      "degree": 7
+    },
+    {
+      "id": 54,
+      "rank": 54,
+      "send_bytes": 2918830565.31131,
+      "recv_bytes": 3065779583.558211,
+      "degree": 6
+    },
+    {
+      "id": 55,
+      "rank": 55,
+      "send_bytes": 3649664548.8210964,
+      "recv_bytes": 2695452201.4053564,
+      "degree": 6
+    },
+    {
+      "id": 56,
+      "rank": 56,
+      "send_bytes": 3019718466.732984,
+      "recv_bytes": 2272395525.4346433,
+      "degree": 7
+    },
+    {
+      "id": 57,
+      "rank": 57,
+      "send_bytes": 3146730512.36117,
+      "recv_bytes": 3331416176.472699,
+      "degree": 7
+    },
+    {
+      "id": 58,
+      "rank": 58,
+      "send_bytes": 3391021242.77227,
+      "recv_bytes": 3607809307.8236766,
+      "degree": 6
+    },
+    {
+      "id": 59,
+      "rank": 59,
+      "send_bytes": 3493123767.5705204,
+      "recv_bytes": 4275730831.2296395,
+      "degree": 6
+    },
+    {
+      "id": 60,
+      "rank": 60,
+      "send_bytes": 2692275835.957531,
+      "recv_bytes": 2221107862.2813334,
+      "degree": 6
+    },
+    {
+      "id": 61,
+      "rank": 61,
+      "send_bytes": 2636627881.935176,
+      "recv_bytes": 2563312019.382353,
+      "degree": 6
+    },
+    {
+      "id": 62,
+      "rank": 62,
+      "send_bytes": 4629581490.638083,
+      "recv_bytes": 2997014942.7328086,
+      "degree": 6
+    },
+    {
+      "id": 63,
+      "rank": 63,
+      "send_bytes": 3709511402.035484,
+      "recv_bytes": 2874780622.2363977,
+      "degree": 6
+    }
+  ],
+  "edges": [
+    {
+      "source": 0,
+      "target": 1,
+      "weight": 694511847.763637,
+      "count": 1
+    },
+    {
+      "source": 0,
+      "target": 3,
+      "weight": 678692080.0136386,
+      "count": 1
+    },
+    {
+      "source": 0,
+      "target": 4,
+      "weight": 217285240.62224072,
+      "count": 1
+    },
+    {
+      "source": 0,
+      "target": 12,
+      "weight": 714886696.9065971,
+      "count": 1
+    },
+    {
+      "source": 0,
+      "target": 16,
+      "weight": 473032135.8632666,
+      "count": 1
+    },
+    {
+      "source": 0,
+      "target": 48,
+      "weight": 373774108.8376965,
+      "count": 1
+    },
+    {
+      "source": 1,
+      "target": 0,
+      "weight": 517828643.89655346,
+      "count": 1
+    },
+    {
+      "source": 1,
+      "target": 2,
+      "weight": 575589117.7592647,
+      "count": 1
+    },
+    {
+      "source": 1,
+      "target": 5,
+      "weight": 331282973.10154563,
+      "count": 1
+    },
+    {
+      "source": 1,
+      "target": 13,
+      "weight": 477594241.4141939,
+      "count": 1
+    },
+    {
+      "source": 1,
+      "target": 17,
+      "weight": 964400637.1393161,
+      "count": 1
+    },
+    {
+      "source": 1,
+      "target": 49,
+      "weight": 494935731.93948656,
+      "count": 1
+    },
+    {
+      "source": 2,
+      "target": 1,
+      "weight": 299619784.7090134,
+      "count": 1
+    },
+    {
+      "source": 2,
+      "target": 3,
+      "weight": 667157074.8249146,
+      "count": 1
+    },
+    {
+      "source": 2,
+      "target": 6,
+      "weight": 319356585.92081153,
+      "count": 1
+    },
+    {
+      "source": 2,
+      "target": 14,
+      "weight": 376839847.50309753,
+      "count": 1
+    },
+    {
+      "source": 2,
+      "target": 18,
+      "weight": 977232075.3320332,
+      "count": 1
+    },
+    {
+      "source": 2,
+      "target": 50,
+      "weight": 322925298.61865985,
+      "count": 1
+    },
+    {
+      "source": 3,
+      "target": 0,
+      "weight": 458231083.2717427,
+      "count": 1
+    },
+    {
+      "source": 3,
+      "target": 2,
+      "weight": 230473611.6337015,
+      "count": 1
+    },
+    {
+      "source": 3,
+      "target": 7,
+      "weight": 470409549.04379207,
+      "count": 1
+    },
+    {
+      "source": 3,
+      "target": 15,
+      "weight": 472816626.6549011,
+      "count": 1
+    },
+    {
+      "source": 3,
+      "target": 19,
+      "weight": 569117623.2574985,
+      "count": 1
+    },
+    {
+      "source": 3,
+      "target": 51,
+      "weight": 545543635.1250312,
+      "count": 1
+    },
+    {
+      "source": 4,
+      "target": 0,
+      "weight": 904955402.519745,
+      "count": 1
+    },
+    {
+      "source": 4,
+      "target": 5,
+      "weight": 318135762.9631298,
+      "count": 1
+    },
+    {
+      "source": 4,
+      "target": 7,
+      "weight": 469792590.6545533,
+      "count": 1
+    },
+    {
+      "source": 4,
+      "target": 8,
+      "weight": 343790514.52397233,
+      "count": 1
+    },
+    {
+      "source": 4,
+      "target": 20,
+      "weight": 1030302463.7633052,
+      "count": 1
+    },
+    {
+      "source": 4,
+      "target": 52,
+      "weight": 400019532.97312146,
+      "count": 1
+    },
+    {
+      "source": 5,
+      "target": 1,
+      "weight": 941619471.0768551,
+      "count": 1
+    },
+    {
+      "source": 5,
+      "target": 4,
+      "weight": 1017339975.1613808,
+      "count": 1
+    },
+    {
+      "source": 5,
+      "target": 6,
+      "weight": 615530910.7675899,
+      "count": 1
+    },
+    {
+      "source": 5,
+      "target": 9,
+      "weight": 451022663.4218929,
+      "count": 1
+    },
+    {
+      "source": 5,
+      "target": 21,
+      "weight": 619426131.6061397,
+      "count": 1
+    },
+    {
+      "source": 5,
+      "target": 53,
+      "weight": 487652296.6501619,
+      "count": 1
+    },
+    {
+      "source": 6,
+      "target": 2,
+      "weight": 578446963.173139,
+      "count": 1
+    },
+    {
+      "source": 6,
+      "target": 5,
+      "weight": 587768952.9931173,
+      "count": 1
+    },
+    {
+      "source": 6,
+      "target": 7,
+      "weight": 1305550919.443061,
+      "count": 1
+    },
+    {
+      "source": 6,
+      "target": 10,
+      "weight": 397804608.19794005,
+      "count": 1
+    },
+    {
+      "source": 6,
+      "target": 22,
+      "weight": 355514911.00322014,
+      "count": 1
+    },
+    {
+      "source": 6,
+      "target": 54,
+      "weight": 479505595.6470536,
+      "count": 1
+    },
+    {
+      "source": 7,
+      "target": 3,
+      "weight": 1209305125.161412,
+      "count": 1
+    },
+    {
+      "source": 7,
+      "target": 4,
+      "weight": 537615134.6234347,
+      "count": 1
+    },
+    {
+      "source": 7,
+      "target": 6,
+      "weight": 561852660.2416348,
+      "count": 1
+    },
+    {
+      "source": 7,
+      "target": 11,
+      "weight": 649986257.1187031,
+      "count": 1
+    },
+    {
+      "source": 7,
+      "target": 23,
+      "weight": 985384568.2535481,
+      "count": 1
+    },
+    {
+      "source": 7,
+      "target": 55,
+      "weight": 230847184.24312195,
+      "count": 1
+    },
+    {
+      "source": 8,
+      "target": 4,
+      "weight": 517909973.81915855,
+      "count": 1
+    },
+    {
+      "source": 8,
+      "target": 9,
+      "weight": 670773690.3922681,
+      "count": 1
+    },
+    {
+      "source": 8,
+      "target": 11,
+      "weight": 458004442.7700796,
+      "count": 1
+    },
+    {
+      "source": 8,
+      "target": 12,
+      "weight": 732081016.8255124,
+      "count": 1
+    },
+    {
+      "source": 8,
+      "target": 24,
+      "weight": 436466716.35549694,
+      "count": 1
+    },
+    {
+      "source": 8,
+      "target": 56,
+      "weight": 244309699.7404187,
+      "count": 1
+    },
+    {
+      "source": 9,
+      "target": 5,
+      "weight": 499454902.4425956,
+      "count": 1
+    },
+    {
+      "source": 9,
+      "target": 8,
+      "weight": 421541519.5973153,
+      "count": 1
+    },
+    {
+      "source": 9,
+      "target": 10,
+      "weight": 392872484.33191156,
+      "count": 1
+    },
+    {
+      "source": 9,
+      "target": 13,
+      "weight": 397248971.60808223,
+      "count": 1
+    },
+    {
+      "source": 9,
+      "target": 25,
+      "weight": 679985943.2539959,
+      "count": 1
+    },
+    {
+      "source": 9,
+      "target": 57,
+      "weight": 677781982.6941687,
+      "count": 1
+    },
+    {
+      "source": 10,
+      "target": 6,
+      "weight": 536217387.2896367,
+      "count": 1
+    },
+    {
+      "source": 10,
+      "target": 9,
+      "weight": 398111267.5884563,
+      "count": 1
+    },
+    {
+      "source": 10,
+      "target": 11,
+      "weight": 445131282.3029135,
+      "count": 1
+    },
+    {
+      "source": 10,
+      "target": 14,
+      "weight": 425728808.756241,
+      "count": 1
+    },
+    {
+      "source": 10,
+      "target": 26,
+      "weight": 774656212.8702643,
+      "count": 1
+    },
+    {
+      "source": 10,
+      "target": 58,
+      "weight": 447733423.338177,
+      "count": 1
+    },
+    {
+      "source": 11,
+      "target": 7,
+      "weight": 240710782.88139194,
+      "count": 1
+    },
+    {
+      "source": 11,
+      "target": 8,
+      "weight": 395373677.1319527,
+      "count": 1
+    },
+    {
+      "source": 11,
+      "target": 10,
+      "weight": 801952106.7015073,
+      "count": 1
+    },
+    {
+      "source": 11,
+      "target": 15,
+      "weight": 426998538.70216954,
+      "count": 1
+    },
+    {
+      "source": 11,
+      "target": 27,
+      "weight": 307603584.002202,
+      "count": 1
+    },
+    {
+      "source": 11,
+      "target": 59,
+      "weight": 673414157.4753542,
+      "count": 1
+    },
+    {
+      "source": 12,
+      "target": 0,
+      "weight": 471428201.42708,
+      "count": 1
+    },
+    {
+      "source": 12,
+      "target": 8,
+      "weight": 572091011.1988621,
+      "count": 1
+    },
+    {
+      "source": 12,
+      "target": 13,
+      "weight": 465853890.6025883,
+      "count": 1
+    },
+    {
+      "source": 12,
+      "target": 15,
+      "weight": 967113033.7080142,
+      "count": 1
+    },
+    {
+      "source": 12,
+      "target": 28,
+      "weight": 455898851.7229279,
+      "count": 1
+    },
+    {
+      "source": 12,
+      "target": 60,
+      "weight": 535526059.55922097,
+      "count": 1
+    },
+    {
+      "source": 13,
+      "target": 1,
+      "weight": 288192308.32516545,
+      "count": 1
+    },
+    {
+      "source": 13,
+      "target": 9,
+      "weight": 711938903.3557149,
+      "count": 1
+    },
+    {
+      "source": 13,
+      "target": 12,
+      "weight": 685188617.6959099,
+      "count": 1
+    },
+    {
+      "source": 13,
+      "target": 14,
+      "weight": 200856844.3006288,
+      "count": 1
+    },
+    {
+      "source": 13,
+      "target": 29,
+      "weight": 730370974.3490386,
+      "count": 1
+    },
+    {
+      "source": 13,
+      "target": 61,
+      "weight": 413280264.5125677,
+      "count": 1
+    },
+    {
+      "source": 14,
+      "target": 2,
+      "weight": 782227311.0647832,
+      "count": 1
+    },
+    {
+      "source": 14,
+      "target": 10,
+      "weight": 503968465.99213195,
+      "count": 1
+    },
+    {
+      "source": 14,
+      "target": 13,
+      "weight": 572806346.9032062,
+      "count": 1
+    },
+    {
+      "source": 14,
+      "target": 15,
+      "weight": 1007657191.2031933,
+      "count": 1
+    },
+    {
+      "source": 14,
+      "target": 30,
+      "weight": 316267721.06149405,
+      "count": 1
+    },
+    {
+      "source": 14,
+      "target": 62,
+      "weight": 526893615.1230129,
+      "count": 1
+    },
+    {
+      "source": 15,
+      "target": 3,
+      "weight": 399256482.87202185,
+      "count": 1
+    },
+    {
+      "source": 15,
+      "target": 11,
+      "weight": 278976525.3483234,
+      "count": 1
+    },
+    {
+      "source": 15,
+      "target": 12,
+      "weight": 702526820.1163689,
+      "count": 1
+    },
+    {
+      "source": 15,
+      "target": 14,
+      "weight": 545647487.6985751,
+      "count": 1
+    },
+    {
+      "source": 15,
+      "target": 31,
+      "weight": 182221661.0910075,
+      "count": 1
+    },
+    {
+      "source": 15,
+      "target": 63,
+      "weight": 364205975.0542118,
+      "count": 1
+    },
+    {
+      "source": 16,
+      "target": 0,
+      "weight": 502445980.51870507,
+      "count": 1
+    },
+    {
+      "source": 16,
+      "target": 17,
+      "weight": 382058370.0343802,
+      "count": 1
+    },
+    {
+      "source": 16,
+      "target": 19,
+      "weight": 727544424.0985798,
+      "count": 1
+    },
+    {
+      "source": 16,
+      "target": 20,
+      "weight": 1043599843.000123,
+      "count": 1
+    },
+    {
+      "source": 16,
+      "target": 28,
+      "weight": 468749647.2687091,
+      "count": 1
+    },
+    {
+      "source": 16,
+      "target": 32,
+      "weight": 786125107.7823124,
+      "count": 1
+    },
+    {
+      "source": 17,
+      "target": 1,
+      "weight": 511207259.85697514,
+      "count": 1
+    },
+    {
+      "source": 17,
+      "target": 16,
+      "weight": 638236322.3724091,
+      "count": 1
+    },
+    {
+      "source": 17,
+      "target": 18,
+      "weight": 1232043166.325008,
+      "count": 1
+    },
+    {
+      "source": 17,
+      "target": 21,
+      "weight": 912548845.8188505,
+      "count": 1
+    },
+    {
+      "source": 17,
+      "target": 29,
+      "weight": 239949481.45335296,
+      "count": 1
+    },
+    {
+      "source": 17,
+      "target": 33,
+      "weight": 602093938.9226122,
+      "count": 1
+    },
+    {
+      "source": 18,
+      "target": 2,
+      "weight": 642836262.1493281,
+      "count": 1
+    },
+    {
+      "source": 18,
+      "target": 17,
+      "weight": 822849354.4864912,
+      "count": 1
+    },
+    {
+      "source": 18,
+      "target": 19,
+      "weight": 558134373.0477109,
+      "count": 1
+    },
+    {
+      "source": 18,
+      "target": 22,
+      "weight": 328997004.57707393,
+      "count": 1
+    },
+    {
+      "source": 18,
+      "target": 30,
+      "weight": 171911424.38509947,
+      "count": 1
+    },
+    {
+      "source": 18,
+      "target": 34,
+      "weight": 348447702.5960824,
+      "count": 1
+    },
+    {
+      "source": 19,
+      "target": 3,
+      "weight": 521980678.9997853,
+      "count": 1
+    },
+    {
+      "source": 19,
+      "target": 16,
+      "weight": 371825148.70056957,
+      "count": 1
+    },
+    {
+      "source": 19,
+      "target": 18,
+      "weight": 274400423.45106655,
+      "count": 1
+    },
+    {
+      "source": 19,
+      "target": 23,
+      "weight": 344712161.5602152,
+      "count": 1
+    },
+    {
+      "source": 19,
+      "target": 31,
+      "weight": 214554901.4234384,
+      "count": 1
+    },
+    {
+      "source": 19,
+      "target": 35,
+      "weight": 635604964.7364193,
+      "count": 1
+    },
+    {
+      "source": 20,
+      "target": 4,
+      "weight": 428572348.9184997,
+      "count": 1
+    },
+    {
+      "source": 20,
+      "target": 16,
+      "weight": 695822225.9648969,
+      "count": 1
+    },
+    {
+      "source": 20,
+      "target": 21,
+      "weight": 307113439.72408605,
+      "count": 1
+    },
+    {
+      "source": 20,
+      "target": 23,
+      "weight": 640965620.5874872,
+      "count": 1
+    },
+    {
+      "source": 20,
+      "target": 24,
+      "weight": 256982786.35173652,
+      "count": 1
+    },
+    {
+      "source": 20,
+      "target": 36,
+      "weight": 208114041.142676,
+      "count": 1
+    },
+    {
+      "source": 21,
+      "target": 5,
+      "weight": 553821145.7788174,
+      "count": 1
+    },
+    {
+      "source": 21,
+      "target": 17,
+      "weight": 631368131.9899778,
+      "count": 1
+    },
+    {
+      "source": 21,
+      "target": 20,
+      "weight": 562250458.6687438,
+      "count": 1
+    },
+    {
+      "source": 21,
+      "target": 22,
+      "weight": 423290419.7291647,
+      "count": 1
+    },
+    {
+      "source": 21,
+      "target": 25,
+      "weight": 408143769.2092568,
+      "count": 1
+    },
+    {
+      "source": 21,
+      "target": 37,
+      "weight": 311720498.3103859,
+      "count": 1
+    },
+    {
+      "source": 22,
+      "target": 6,
+      "weight": 661204263.91063,
+      "count": 1
+    },
+    {
+      "source": 22,
+      "target": 18,
+      "weight": 671312206.8841869,
+      "count": 1
+    },
+    {
+      "source": 22,
+      "target": 21,
+      "weight": 348217195.9819478,
+      "count": 1
+    },
+    {
+      "source": 22,
+      "target": 23,
+      "weight": 245541764.2793831,
+      "count": 1
+    },
+    {
+      "source": 22,
+      "target": 26,
+      "weight": 625509020.5687001,
+      "count": 1
+    },
+    {
+      "source": 22,
+      "target": 38,
+      "weight": 440196118.8492264,
+      "count": 1
+    },
+    {
+      "source": 23,
+      "target": 7,
+      "weight": 454297838.48498756,
+      "count": 1
+    },
+    {
+      "source": 23,
+      "target": 19,
+      "weight": 360528137.37280035,
+      "count": 1
+    },
+    {
+      "source": 23,
+      "target": 20,
+      "weight": 306038473.54009074,
+      "count": 1
+    },
+    {
+      "source": 23,
+      "target": 22,
+      "weight": 702006825.1581796,
+      "count": 1
+    },
+    {
+      "source": 23,
+      "target": 27,
+      "weight": 670375424.6000743,
+      "count": 1
+    },
+    {
+      "source": 23,
+      "target": 39,
+      "weight": 473472327.23990446,
+      "count": 1
+    },
+    {
+      "source": 23,
+      "target": 58,
+      "weight": 26516714.287054516,
+      "count": 1
+    },
+    {
+      "source": 24,
+      "target": 8,
+      "weight": 241349638.65762976,
+      "count": 1
+    },
+    {
+      "source": 24,
+      "target": 20,
+      "weight": 878942622.8384744,
+      "count": 1
+    },
+    {
+      "source": 24,
+      "target": 25,
+      "weight": 432844644.9329726,
+      "count": 1
+    },
+    {
+      "source": 24,
+      "target": 27,
+      "weight": 805765244.3572141,
+      "count": 1
+    },
+    {
+      "source": 24,
+      "target": 28,
+      "weight": 603539126.0778501,
+      "count": 1
+    },
+    {
+      "source": 24,
+      "target": 40,
+      "weight": 387732346.8639251,
+      "count": 1
+    },
+    {
+      "source": 25,
+      "target": 9,
+      "weight": 581117585.850951,
+      "count": 1
+    },
+    {
+      "source": 25,
+      "target": 21,
+      "weight": 642028174.5987313,
+      "count": 1
+    },
+    {
+      "source": 25,
+      "target": 24,
+      "weight": 640548502.1554158,
+      "count": 1
+    },
+    {
+      "source": 25,
+      "target": 26,
+      "weight": 500903714.05148816,
+      "count": 1
+    },
+    {
+      "source": 25,
+      "target": 29,
+      "weight": 912430245.6868151,
+      "count": 1
+    },
+    {
+      "source": 25,
+      "target": 41,
+      "weight": 220480281.37992176,
+      "count": 1
+    },
+    {
+      "source": 26,
+      "target": 10,
+      "weight": 608011431.2619202,
+      "count": 1
+    },
+    {
+      "source": 26,
+      "target": 22,
+      "weight": 551212960.4026772,
+      "count": 1
+    },
+    {
+      "source": 26,
+      "target": 25,
+      "weight": 522302328.0940351,
+      "count": 1
+    },
+    {
+      "source": 26,
+      "target": 27,
+      "weight": 493784670.03514534,
+      "count": 1
+    },
+    {
+      "source": 26,
+      "target": 30,
+      "weight": 808381620.2256963,
+      "count": 1
+    },
+    {
+      "source": 26,
+      "target": 42,
+      "weight": 491372656.45627826,
+      "count": 1
+    },
+    {
+      "source": 27,
+      "target": 11,
+      "weight": 304856179.5273433,
+      "count": 1
+    },
+    {
+      "source": 27,
+      "target": 23,
+      "weight": 391644250.99386084,
+      "count": 1
+    },
+    {
+      "source": 27,
+      "target": 24,
+      "weight": 392821100.1491964,
+      "count": 1
+    },
+    {
+      "source": 27,
+      "target": 26,
+      "weight": 489605018.7876912,
+      "count": 1
+    },
+    {
+      "source": 27,
+      "target": 31,
+      "weight": 655950485.6152892,
+      "count": 1
+    },
+    {
+      "source": 27,
+      "target": 43,
+      "weight": 377292044.73606694,
+      "count": 1
+    },
+    {
+      "source": 28,
+      "target": 12,
+      "weight": 302494438.4900509,
+      "count": 1
+    },
+    {
+      "source": 28,
+      "target": 16,
+      "weight": 686990106.580106,
+      "count": 1
+    },
+    {
+      "source": 28,
+      "target": 24,
+      "weight": 543007273.2900811,
+      "count": 1
+    },
+    {
+      "source": 28,
+      "target": 29,
+      "weight": 556631376.7425982,
+      "count": 1
+    },
+    {
+      "source": 28,
+      "target": 31,
+      "weight": 645683019.8732451,
+      "count": 1
+    },
+    {
+      "source": 28,
+      "target": 44,
+      "weight": 445956512.11981213,
+      "count": 1
+    },
+    {
+      "source": 29,
+      "target": 13,
+      "weight": 624425642.593521,
+      "count": 1
+    },
+    {
+      "source": 29,
+      "target": 17,
+      "weight": 562896645.8044775,
+      "count": 1
+    },
+    {
+      "source": 29,
+      "target": 25,
+      "weight": 344063984.46111315,
+      "count": 1
+    },
+    {
+      "source": 29,
+      "target": 28,
+      "weight": 1299015029.434937,
+      "count": 1
+    },
+    {
+      "source": 29,
+      "target": 30,
+      "weight": 751989610.0079824,
+      "count": 1
+    },
+    {
+      "source": 29,
+      "target": 45,
+      "weight": 347398234.28438395,
+      "count": 1
+    },
+    {
+      "source": 30,
+      "target": 14,
+      "weight": 297999842.7870449,
+      "count": 1
+    },
+    {
+      "source": 30,
+      "target": 18,
+      "weight": 417524492.3187328,
+      "count": 1
+    },
+    {
+      "source": 30,
+      "target": 26,
+      "weight": 667188055.8395293,
+      "count": 1
+    },
+    {
+      "source": 30,
+      "target": 29,
+      "weight": 599880061.7649632,
+      "count": 1
+    },
+    {
+      "source": 30,
+      "target": 31,
+      "weight": 368011869.4262031,
+      "count": 1
+    },
+    {
+      "source": 30,
+      "target": 46,
+      "weight": 561636850.0914265,
+      "count": 1
+    },
+    {
+      "source": 31,
+      "target": 15,
+      "weight": 496641897.46165526,
+      "count": 1
+    },
+    {
+      "source": 31,
+      "target": 19,
+      "weight": 127253980.94826636,
+      "count": 1
+    },
+    {
+      "source": 31,
+      "target": 27,
+      "weight": 341088068.42527986,
+      "count": 1
+    },
+    {
+      "source": 31,
+      "target": 28,
+      "weight": 674578353.9026937,
+      "count": 1
+    },
+    {
+      "source": 31,
+      "target": 30,
+      "weight": 577064272.3459821,
+      "count": 1
+    },
+    {
+      "source": 31,
+      "target": 47,
+      "weight": 361965470.99053085,
+      "count": 1
+    },
+    {
+      "source": 32,
+      "target": 16,
+      "weight": 445291985.2938251,
+      "count": 1
+    },
+    {
+      "source": 32,
+      "target": 33,
+      "weight": 376015966.25760305,
+      "count": 1
+    },
+    {
+      "source": 32,
+      "target": 35,
+      "weight": 440553525.7020776,
+      "count": 1
+    },
+    {
+      "source": 32,
+      "target": 36,
+      "weight": 389624543.32752705,
+      "count": 1
+    },
+    {
+      "source": 32,
+      "target": 44,
+      "weight": 743811565.1245774,
+      "count": 1
+    },
+    {
+      "source": 32,
+      "target": 48,
+      "weight": 1028763766.502391,
+      "count": 1
+    },
+    {
+      "source": 33,
+      "target": 17,
+      "weight": 721425518.6892703,
+      "count": 1
+    },
+    {
+      "source": 33,
+      "target": 32,
+      "weight": 353770632.5276237,
+      "count": 1
+    },
+    {
+      "source": 33,
+      "target": 34,
+      "weight": 536829970.77682674,
+      "count": 1
+    },
+    {
+      "source": 33,
+      "target": 37,
+      "weight": 833095358.2211331,
+      "count": 1
+    },
+    {
+      "source": 33,
+      "target": 45,
+      "weight": 385068599.86525893,
+      "count": 1
+    },
+    {
+      "source": 33,
+      "target": 49,
+      "weight": 701119413.6473386,
+      "count": 1
+    },
+    {
+      "source": 34,
+      "target": 18,
+      "weight": 355606561.79606587,
+      "count": 1
+    },
+    {
+      "source": 34,
+      "target": 33,
+      "weight": 405824615.790162,
+      "count": 1
+    },
+    {
+      "source": 34,
+      "target": 35,
+      "weight": 337893435.41680235,
+      "count": 1
+    },
+    {
+      "source": 34,
+      "target": 38,
+      "weight": 316225561.112263,
+      "count": 1
+    },
+    {
+      "source": 34,
+      "target": 46,
+      "weight": 679729573.7813596,
+      "count": 1
+    },
+    {
+      "source": 34,
+      "target": 50,
+      "weight": 578370444.8231548,
+      "count": 1
+    },
+    {
+      "source": 35,
+      "target": 19,
+      "weight": 261556815.58560845,
+      "count": 1
+    },
+    {
+      "source": 35,
+      "target": 32,
+      "weight": 1849240467.0130732,
+      "count": 1
+    },
+    {
+      "source": 35,
+      "target": 34,
+      "weight": 430142084.0383743,
+      "count": 1
+    },
+    {
+      "source": 35,
+      "target": 39,
+      "weight": 900364062.717034,
+      "count": 1
+    },
+    {
+      "source": 35,
+      "target": 47,
+      "weight": 534707082.1391356,
+      "count": 1
+    },
+    {
+      "source": 35,
+      "target": 51,
+      "weight": 352698846.47568953,
+      "count": 1
+    },
+    {
+      "source": 36,
+      "target": 20,
+      "weight": 366433778.35681325,
+      "count": 1
+    },
+    {
+      "source": 36,
+      "target": 32,
+      "weight": 680045104.879579,
+      "count": 1
+    },
+    {
+      "source": 36,
+      "target": 37,
+      "weight": 465203594.8555017,
+      "count": 1
+    },
+    {
+      "source": 36,
+      "target": 39,
+      "weight": 409641969.7639046,
+      "count": 1
+    },
+    {
+      "source": 36,
+      "target": 40,
+      "weight": 605800791.8139509,
+      "count": 1
+    },
+    {
+      "source": 36,
+      "target": 52,
+      "weight": 332622414.4145155,
+      "count": 1
+    },
+    {
+      "source": 37,
+      "target": 21,
+      "weight": 668891909.9761938,
+      "count": 1
+    },
+    {
+      "source": 37,
+      "target": 33,
+      "weight": 299866371.74619585,
+      "count": 1
+    },
+    {
+      "source": 37,
+      "target": 36,
+      "weight": 530739725.5967801,
+      "count": 1
+    },
+    {
+      "source": 37,
+      "target": 38,
+      "weight": 434859986.78408366,
+      "count": 1
+    },
+    {
+      "source": 37,
+      "target": 41,
+      "weight": 398871619.5342697,
+      "count": 1
+    },
+    {
+      "source": 37,
+      "target": 53,
+      "weight": 836643553.6729397,
+      "count": 1
+    },
+    {
+      "source": 38,
+      "target": 22,
+      "weight": 762762863.5362699,
+      "count": 1
+    },
+    {
+      "source": 38,
+      "target": 34,
+      "weight": 537333763.4111307,
+      "count": 1
+    },
+    {
+      "source": 38,
+      "target": 37,
+      "weight": 558384017.5951989,
+      "count": 1
+    },
+    {
+      "source": 38,
+      "target": 39,
+      "weight": 510895384.25035894,
+      "count": 1
+    },
+    {
+      "source": 38,
+      "target": 42,
+      "weight": 502733724.8581884,
+      "count": 1
+    },
+    {
+      "source": 38,
+      "target": 54,
+      "weight": 411569550.5919077,
+      "count": 1
+    },
+    {
+      "source": 39,
+      "target": 4,
+      "weight": 39951243.56617883,
+      "count": 1
+    },
+    {
+      "source": 39,
+      "target": 23,
+      "weight": 650690945.0382279,
+      "count": 1
+    },
+    {
+      "source": 39,
+      "target": 35,
+      "weight": 868822867.3699552,
+      "count": 1
+    },
+    {
+      "source": 39,
+      "target": 36,
+      "weight": 1219391899.8479567,
+      "count": 1
+    },
+    {
+      "source": 39,
+      "target": 38,
+      "weight": 447174957.3951751,
+      "count": 1
+    },
+    {
+      "source": 39,
+      "target": 43,
+      "weight": 217979729.117525,
+      "count": 1
+    },
+    {
+      "source": 39,
+      "target": 55,
+      "weight": 743988560.0337487,
+      "count": 1
+    },
+    {
+      "source": 40,
+      "target": 24,
+      "weight": 315140583.0990351,
+      "count": 1
+    },
+    {
+      "source": 40,
+      "target": 36,
+      "weight": 518180396.75215554,
+      "count": 1
+    },
+    {
+      "source": 40,
+      "target": 41,
+      "weight": 524996132.66608196,
+      "count": 1
+    },
+    {
+      "source": 40,
+      "target": 43,
+      "weight": 709424256.6266199,
+      "count": 1
+    },
+    {
+      "source": 40,
+      "target": 44,
+      "weight": 622243224.9453301,
+      "count": 1
+    },
+    {
+      "source": 40,
+      "target": 56,
+      "weight": 248686789.54187244,
+      "count": 1
+    },
+    {
+      "source": 41,
+      "target": 25,
+      "weight": 521577470.16899455,
+      "count": 1
+    },
+    {
+      "source": 41,
+      "target": 37,
+      "weight": 707249353.9919945,
+      "count": 1
+    },
+    {
+      "source": 41,
+      "target": 40,
+      "weight": 533067336.56313276,
+      "count": 1
+    },
+    {
+      "source": 41,
+      "target": 42,
+      "weight": 416211416.59679115,
+      "count": 1
+    },
+    {
+      "source": 41,
+      "target": 45,
+      "weight": 573817004.0769569,
+      "count": 1
+    },
+    {
+      "source": 41,
+      "target": 57,
+      "weight": 561178271.4153306,
+      "count": 1
+    },
+    {
+      "source": 42,
+      "target": 26,
+      "weight": 561714100.982292,
+      "count": 1
+    },
+    {
+      "source": 42,
+      "target": 38,
+      "weight": 267515720.1951513,
+      "count": 1
+    },
+    {
+      "source": 42,
+      "target": 41,
+      "weight": 286780059.14634496,
+      "count": 1
+    },
+    {
+      "source": 42,
+      "target": 43,
+      "weight": 667787414.5251907,
+      "count": 1
+    },
+    {
+      "source": 42,
+      "target": 46,
+      "weight": 430183883.5569028,
+      "count": 1
+    },
+    {
+      "source": 42,
+      "target": 58,
+      "weight": 699707837.4810754,
+      "count": 1
+    },
+    {
+      "source": 43,
+      "target": 27,
+      "weight": 373869775.83570075,
+      "count": 1
+    },
+    {
+      "source": 43,
+      "target": 39,
+      "weight": 346846986.6012691,
+      "count": 1
+    },
+    {
+      "source": 43,
+      "target": 40,
+      "weight": 403609424.01103467,
+      "count": 1
+    },
+    {
+      "source": 43,
+      "target": 42,
+      "weight": 642320364.2348154,
+      "count": 1
+    },
+    {
+      "source": 43,
+      "target": 47,
+      "weight": 358433510.83527374,
+      "count": 1
+    },
+    {
+      "source": 43,
+      "target": 59,
+      "weight": 796384867.5375187,
+      "count": 1
+    },
+    {
+      "source": 44,
+      "target": 28,
+      "weight": 627700988.4367722,
+      "count": 1
+    },
+    {
+      "source": 44,
+      "target": 32,
+      "weight": 408899923.95722663,
+      "count": 1
+    },
+    {
+      "source": 44,
+      "target": 40,
+      "weight": 479526265.76666427,
+      "count": 1
+    },
+    {
+      "source": 44,
+      "target": 45,
+      "weight": 431707902.474987,
+      "count": 1
+    },
+    {
+      "source": 44,
+      "target": 47,
+      "weight": 777213712.7800615,
+      "count": 1
+    },
+    {
+      "source": 44,
+      "target": 60,
+      "weight": 172628116.78796417,
+      "count": 1
+    },
+    {
+      "source": 45,
+      "target": 29,
+      "weight": 434759781.91323704,
+      "count": 1
+    },
+    {
+      "source": 45,
+      "target": 33,
+      "weight": 428099432.29516876,
+      "count": 1
+    },
+    {
+      "source": 45,
+      "target": 41,
+      "weight": 846047066.009408,
+      "count": 1
+    },
+    {
+      "source": 45,
+      "target": 44,
+      "weight": 367135379.3624233,
+      "count": 1
+    },
+    {
+      "source": 45,
+      "target": 46,
+      "weight": 282244177.00771445,
+      "count": 1
+    },
+    {
+      "source": 45,
+      "target": 61,
+      "weight": 472157673.98697627,
+      "count": 1
+    },
+    {
+      "source": 46,
+      "target": 30,
+      "weight": 283404104.54521406,
+      "count": 1
+    },
+    {
+      "source": 46,
+      "target": 34,
+      "weight": 515675969.3757117,
+      "count": 1
+    },
+    {
+      "source": 46,
+      "target": 42,
+      "weight": 492819471.004141,
+      "count": 1
+    },
+    {
+      "source": 46,
+      "target": 45,
+      "weight": 451794091.45796937,
+      "count": 1
+    },
+    {
+      "source": 46,
+      "target": 47,
+      "weight": 928344044.3598877,
+      "count": 1
+    },
+    {
+      "source": 46,
+      "target": 62,
+      "weight": 543964617.2869015,
+      "count": 1
+    },
+    {
+      "source": 47,
+      "target": 31,
+      "weight": 365253123.36578596,
+      "count": 1
+    },
+    {
+      "source": 47,
+      "target": 35,
+      "weight": 426325913.8928116,
+      "count": 1
+    },
+    {
+      "source": 47,
+      "target": 43,
+      "weight": 356061399.4274404,
+      "count": 1
+    },
+    {
+      "source": 47,
+      "target": 44,
+      "weight": 325795680.3661773,
+      "count": 1
+    },
+    {
+      "source": 47,
+      "target": 46,
+      "weight": 336553368.3117889,
+      "count": 1
+    },
+    {
+      "source": 47,
+      "target": 63,
+      "weight": 411628661.025126,
+      "count": 1
+    },
+    {
+      "source": 48,
+      "target": 0,
+      "weight": 197438025.35306522,
+      "count": 1
+    },
+    {
+      "source": 48,
+      "target": 32,
+      "weight": 646750964.7056429,
+      "count": 1
+    },
+    {
+      "source": 48,
+      "target": 49,
+      "weight": 333237823.1657443,
+      "count": 1
+    },
+    {
+      "source": 48,
+      "target": 51,
+      "weight": 305640619.0556373,
+      "count": 1
+    },
+    {
+      "source": 48,
+      "target": 52,
+      "weight": 763571661.0150588,
+      "count": 1
+    },
+    {
+      "source": 48,
+      "target": 60,
+      "weight": 238048158.4139204,
+      "count": 1
+    },
+    {
+      "source": 49,
+      "target": 1,
+      "weight": 383867803.7456728,
+      "count": 1
+    },
+    {
+      "source": 49,
+      "target": 33,
+      "weight": 360207178.1836591,
+      "count": 1
+    },
+    {
+      "source": 49,
+      "target": 48,
+      "weight": 265986053.9024152,
+      "count": 1
+    },
+    {
+      "source": 49,
+      "target": 50,
+      "weight": 303069816.7190527,
+      "count": 1
+    },
+    {
+      "source": 49,
+      "target": 53,
+      "weight": 691339099.666329,
+      "count": 1
+    },
+    {
+      "source": 49,
+      "target": 61,
+      "weight": 430640706.09147185,
+      "count": 1
+    },
+    {
+      "source": 50,
+      "target": 2,
+      "weight": 321897720.4532892,
+      "count": 1
+    },
+    {
+      "source": 50,
+      "target": 34,
+      "weight": 448484351.925636,
+      "count": 1
+    },
+    {
+      "source": 50,
+      "target": 49,
+      "weight": 349245704.39966035,
+      "count": 1
+    },
+    {
+      "source": 50,
+      "target": 51,
+      "weight": 500484848.5237287,
+      "count": 1
+    },
+    {
+      "source": 50,
+      "target": 54,
+      "weight": 551226500.6181495,
+      "count": 1
+    },
+    {
+      "source": 50,
+      "target": 62,
+      "weight": 579568766.3473786,
+      "count": 1
+    },
+    {
+      "source": 51,
+      "target": 3,
+      "weight": 1235327422.914842,
+      "count": 1
+    },
+    {
+      "source": 51,
+      "target": 35,
+      "weight": 421818791.86665523,
+      "count": 1
+    },
+    {
+      "source": 51,
+      "target": 48,
+      "weight": 602408944.2681152,
+      "count": 1
+    },
+    {
+      "source": 51,
+      "target": 50,
+      "weight": 988111324.5438573,
+      "count": 1
+    },
+    {
+      "source": 51,
+      "target": 55,
+      "weight": 452610619.4484004,
+      "count": 1
+    },
+    {
+      "source": 51,
+      "target": 63,
+      "weight": 532392659.3790894,
+      "count": 1
+    },
+    {
+      "source": 52,
+      "target": 4,
+      "weight": 427903158.76173574,
+      "count": 1
+    },
+    {
+      "source": 52,
+      "target": 36,
+      "weight": 724271059.9189436,
+      "count": 1
+    },
+    {
+      "source": 52,
+      "target": 48,
+      "weight": 765978717.0024904,
+      "count": 1
+    },
+    {
+      "source": 52,
+      "target": 53,
+      "weight": 470961289.7927372,
+      "count": 1
+    },
+    {
+      "source": 52,
+      "target": 55,
+      "weight": 421054962.457164,
+      "count": 1
+    },
+    {
+      "source": 52,
+      "target": 56,
+      "weight": 356856083.0246085,
+      "count": 1
+    },
+    {
+      "source": 53,
+      "target": 5,
+      "weight": 672764352.9225112,
+      "count": 1
+    },
+    {
+      "source": 53,
+      "target": 37,
+      "weight": 835878986.9149494,
+      "count": 1
+    },
+    {
+      "source": 53,
+      "target": 49,
+      "weight": 601425870.5371935,
+      "count": 1
+    },
+    {
+      "source": 53,
+      "target": 52,
+      "weight": 629682066.5354061,
+      "count": 1
+    },
+    {
+      "source": 53,
+      "target": 54,
+      "weight": 399531606.4623295,
+      "count": 1
+    },
+    {
+      "source": 53,
+      "target": 57,
+      "weight": 473424336.81800365,
+      "count": 1
+    },
+    {
+      "source": 53,
+      "target": 58,
+      "weight": 162337502.21874028,
+      "count": 1
+    },
+    {
+      "source": 54,
+      "target": 6,
+      "weight": 568974573.0601839,
+      "count": 1
+    },
+    {
+      "source": 54,
+      "target": 38,
+      "weight": 520129279.1741096,
+      "count": 1
+    },
+    {
+      "source": 54,
+      "target": 50,
+      "weight": 746737443.0211048,
+      "count": 1
+    },
+    {
+      "source": 54,
+      "target": 53,
+      "weight": 561618589.3508143,
+      "count": 1
+    },
+    {
+      "source": 54,
+      "target": 55,
+      "weight": 188487505.5066532,
+      "count": 1
+    },
+    {
+      "source": 54,
+      "target": 58,
+      "weight": 332883175.19844395,
+      "count": 1
+    },
+    {
+      "source": 55,
+      "target": 7,
+      "weight": 460203281.8650933,
+      "count": 1
+    },
+    {
+      "source": 55,
+      "target": 39,
+      "weight": 522098647.5749599,
+      "count": 1
+    },
+    {
+      "source": 55,
+      "target": 51,
+      "weight": 317649644.0324873,
+      "count": 1
+    },
+    {
+      "source": 55,
+      "target": 52,
+      "weight": 747868622.1902637,
+      "count": 1
+    },
+    {
+      "source": 55,
+      "target": 54,
+      "weight": 665185895.4578792,
+      "count": 1
+    },
+    {
+      "source": 55,
+      "target": 59,
+      "weight": 936658457.700413,
+      "count": 1
+    },
+    {
+      "source": 56,
+      "target": 8,
+      "weight": 650364605.5479527,
+      "count": 1
+    },
+    {
+      "source": 56,
+      "target": 29,
+      "weight": 51548128.07476247,
+      "count": 1
+    },
+    {
+      "source": 56,
+      "target": 40,
+      "weight": 481934881.68078774,
+      "count": 1
+    },
+    {
+      "source": 56,
+      "target": 52,
+      "weight": 722125516.1785852,
+      "count": 1
+    },
+    {
+      "source": 56,
+      "target": 57,
+      "weight": 325312441.1402129,
+      "count": 1
+    },
+    {
+      "source": 56,
+      "target": 59,
+      "weight": 517756974.1875379,
+      "count": 1
+    },
+    {
+      "source": 56,
+      "target": 60,
+      "weight": 270675919.9231454,
+      "count": 1
+    },
+    {
+      "source": 57,
+      "target": 9,
+      "weight": 687391328.8781704,
+      "count": 1
+    },
+    {
+      "source": 57,
+      "target": 19,
+      "weight": 94157195.22395323,
+      "count": 1
+    },
+    {
+      "source": 57,
+      "target": 41,
+      "weight": 590428792.7412626,
+      "count": 1
+    },
+    {
+      "source": 57,
+      "target": 53,
+      "weight": 220644591.86396068,
+      "count": 1
+    },
+    {
+      "source": 57,
+      "target": 56,
+      "weight": 518461231.4284217,
+      "count": 1
+    },
+    {
+      "source": 57,
+      "target": 58,
+      "weight": 730884921.9490749,
+      "count": 1
+    },
+    {
+      "source": 57,
+      "target": 61,
+      "weight": 304762450.2763263,
+      "count": 1
+    },
+    {
+      "source": 58,
+      "target": 10,
+      "weight": 563084196.8918276,
+      "count": 1
+    },
+    {
+      "source": 58,
+      "target": 42,
+      "weight": 458921886.76654357,
+      "count": 1
+    },
+    {
+      "source": 58,
+      "target": 54,
+      "weight": 558760434.7808915,
+      "count": 1
+    },
+    {
+      "source": 58,
+      "target": 57,
+      "weight": 813912800.2347184,
+      "count": 1
+    },
+    {
+      "source": 58,
+      "target": 59,
+      "weight": 511993924.8991376,
+      "count": 1
+    },
+    {
+      "source": 58,
+      "target": 62,
+      "weight": 484347999.1991513,
+      "count": 1
+    },
+    {
+      "source": 59,
+      "target": 11,
+      "weight": 332337134.49292517,
+      "count": 1
+    },
+    {
+      "source": 59,
+      "target": 43,
+      "weight": 972028842.9025801,
+      "count": 1
+    },
+    {
+      "source": 59,
+      "target": 55,
+      "weight": 658463369.7162682,
+      "count": 1
+    },
+    {
+      "source": 59,
+      "target": 56,
+      "weight": 568037095.8259392,
+      "count": 1
+    },
+    {
+      "source": 59,
+      "target": 58,
+      "weight": 533190915.89958656,
+      "count": 1
+    },
+    {
+      "source": 59,
+      "target": 63,
+      "weight": 429066408.73322093,
+      "count": 1
+    },
+    {
+      "source": 60,
+      "target": 12,
+      "weight": 553383084.0699081,
+      "count": 1
+    },
+    {
+      "source": 60,
+      "target": 44,
+      "weight": 499595244.47281015,
+      "count": 1
+    },
+    {
+      "source": 60,
+      "target": 48,
+      "weight": 511267877.09327596,
+      "count": 1
+    },
+    {
+      "source": 60,
+      "target": 56,
+      "weight": 336044625.87338275,
+      "count": 1
+    },
+    {
+      "source": 60,
+      "target": 61,
+      "weight": 441396079.9500928,
+      "count": 1
+    },
+    {
+      "source": 60,
+      "target": 63,
+      "weight": 350588924.4980612,
+      "count": 1
+    },
+    {
+      "source": 61,
+      "target": 13,
+      "weight": 398946770.37450784,
+      "count": 1
+    },
+    {
+      "source": 61,
+      "target": 45,
+      "weight": 473353155.4983701,
+      "count": 1
+    },
+    {
+      "source": 61,
+      "target": 49,
+      "weight": 374507016.79755336,
+      "count": 1
+    },
+    {
+      "source": 61,
+      "target": 57,
+      "weight": 479806344.17026484,
+      "count": 1
+    },
+    {
+      "source": 61,
+      "target": 60,
+      "weight": 409265155.12228256,
+      "count": 1
+    },
+    {
+      "source": 61,
+      "target": 62,
+      "weight": 500749439.9721971,
+      "count": 1
+    },
+    {
+      "source": 62,
+      "target": 14,
+      "weight": 711776208.297791,
+      "count": 1
+    },
+    {
+      "source": 62,
+      "target": 46,
+      "weight": 694754943.9028898,
+      "count": 1
+    },
+    {
+      "source": 62,
+      "target": 50,
+      "weight": 1260522682.8742719,
+      "count": 1
+    },
+    {
+      "source": 62,
+      "target": 58,
+      "weight": 674554817.451524,
+      "count": 1
+    },
+    {
+      "source": 62,
+      "target": 61,
+      "weight": 501074844.56491804,
+      "count": 1
+    },
+    {
+      "source": 62,
+      "target": 63,
+      "weight": 786897993.5466886,
+      "count": 1
+    },
+    {
+      "source": 63,
+      "target": 15,
+      "weight": 662078179.0878522,
+      "count": 1
+    },
+    {
+      "source": 63,
+      "target": 47,
+      "weight": 549537108.6952876,
+      "count": 1
+    },
+    {
+      "source": 63,
+      "target": 51,
+      "weight": 701918707.5436981,
+      "count": 1
+    },
+    {
+      "source": 63,
+      "target": 59,
+      "weight": 839522449.4296782,
+      "count": 1
+    },
+    {
+      "source": 63,
+      "target": 60,
+      "weight": 594964452.4748002,
+      "count": 1
+    },
+    {
+      "source": 63,
+      "target": 62,
+      "weight": 361490504.80416745,
+      "count": 1
+    }
+  ],
+  "metadata": {
+    "app": "quicksilver",
+    "name": "quicksilver_n64_mc_20260407_012345",
+    "np": 64,
+    "pattern": "mc_particle_transport",
+    "backend": "synthetic",
+    "note": "3D 4x4x4 domain decomp + particle migration, seed=20260407"
+  }
+}

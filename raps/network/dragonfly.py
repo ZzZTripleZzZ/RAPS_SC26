@@ -246,9 +246,7 @@ def build_dragonfly_idx_map_circulant(
     return mapping
 
 
-# =============================================================================
 # Adaptive Routing Functions for Dragonfly
-# =============================================================================
 
 def parse_dragonfly_host(host_name: str) -> tuple[int, int, int]:
     """

@@ -1,0 +1,59 @@
+// BookSim2 Dragonfly 1056-node Configuration Template
+// Topology: 33 groups × 8 routers/group × 4 hosts/router = 1056 hosts
+// BookSim2 dragonflynew formula: k=4 → a=2k=8, g=2k²+1=33, N=4k³+2k=1056
+// Matches RAPS run_sweep.py DRAGONFLY_SUITE[1]: build_dragonfly(d=8, a=32, p=4)
+// Matches SST-Macro: geometry=[8,33], concentration=4, h=32 (even ✓)
+// Routing: minimal
+// Injection rate: INJECTION_RATE (= desired ρ, fraction of link bandwidth)
+
+// ========================
+// Router architecture
+// ========================
+num_vcs     = 2;
+vc_buf_size = 256;
+wait_for_tail_credit = 0;
+
+vc_allocator = separable_input_first;
+sw_allocator = separable_input_first;
+alloc_iters  = 1;
+
+credit_delay   = 2;
+routing_delay  = 0;
+vc_alloc_delay = 1;
+sw_alloc_delay = 1;
+st_final_delay = 1;
+
+input_speedup    = 1;
+output_speedup   = 1;
+internal_speedup = 2.0;
+
+// ========================
+// Topology
+// ========================
+// BookSim2 DragonFlyNew: k=4 → a=8, g=33, N=1056 (exact match with RAPS build_dragonfly(d=8,a=32,p=4))
+topology = dragonflynew;
+k = 4;
+n = 1;
+
+// ========================
+// Routing
+// ========================
+routing_function = min;   // → min_dragonflynew
+
+// ========================
+// Traffic / Simulation
+// ========================
+traffic = uniform;
+injection_rate = INJECTION_RATE;
+injection_rate_uses_flits = 1;
+
+packet_size = 10;
+use_read_write = 0;
+
+sim_type       = latency;
+sample_period  = 5000;
+warmup_periods = 3;
+sim_count      = 3;
+max_samples    = 10;   // cap iterations to avoid non-convergence at high ρ
+
+// print_channel_stats not supported in this BookSim2 build

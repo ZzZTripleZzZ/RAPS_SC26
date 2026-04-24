@@ -63,9 +63,11 @@ from .base import (
     aggregate_link_stall_stats,
     compute_stall_ratio,
     compute_all_to_all_coefficients,
+    compute_matrix_template_coefficients,
     compute_stencil_3d_coefficients,
     compute_system_network_stats,
     link_loads_for_job,
+    link_loads_for_job_matrix,
     link_loads_for_job_stencil_3d,
     link_loads_for_pattern,
     get_effective_traffic,
@@ -90,6 +92,7 @@ from .dragonfly import (
     build_dragonfly_idx_map,
     build_dragonfly_idx_map_circulant,
     link_loads_for_job_dragonfly_adaptive,
+    parse_dragonfly_host,
 )
 from raps.plotting import plot_fattree_hierarchy, plot_dragonfly, plot_torus2d, plot_torus3d
 
@@ -221,6 +224,10 @@ class NetworkModel:
                 # dragonfly global link first saturates under uniform traffic.
                 # u_onset = H / ((G-1) * P)  [Kim et al. 2008]
                 self.u_onset = H / ((G_explicit - 1) * P)
+                # Store explicit inter-group value so per-job lookup can switch
+                # to the elevated single-group regime (paper Table 3).
+                self._u_onset_inter_group = self.u_onset
+                self._dragonfly_groups = G_explicit
             else:
                 # Legacy all-to-all dragonfly
                 self.net_graph = build_dragonfly(D, A, P)
@@ -310,6 +317,37 @@ class NetworkModel:
             return self.routing_algorithm in ('ugal', 'valiant')
         return False
 
+    # Paper Table 3: a dragonfly job whose hosts fit entirely inside a single
+    # group sees the local group bandwidth, not the inter-group global-link
+    # ceiling, so its congestion-onset threshold is elevated.
+    _U_ONSET_INTRA_GROUP = 0.40
+
+    def _job_spans_single_group(self, job) -> bool:
+        """Return True if all hosts of a dragonfly job live in the same group."""
+        if self.topology != "dragonfly":
+            return False
+        hosts = self.get_job_hosts(job)
+        if not hosts:
+            return False
+        first_group = parse_dragonfly_host(hosts[0])[0]
+        for h in hosts[1:]:
+            if parse_dragonfly_host(h)[0] != first_group:
+                return False
+        return True
+
+    def get_u_onset(self, job) -> float:
+        """Per-job congestion onset threshold.
+
+        For dragonfly jobs confined to a single group we use the elevated
+        intra-group value (paper Table 3, ~192-node regime); otherwise we fall
+        back to the topology-derived ``u_onset = H/[(G-1)*P]`` (Kim et al.) set
+        in ``__init__`` for circulant dragonfly, or the default 0.0 for other
+        topologies.
+        """
+        if self.topology == "dragonfly" and self._job_spans_single_group(job):
+            return self._U_ONSET_INTRA_GROUP
+        return getattr(self, "u_onset", 0.0)
+
     def _compute_and_cache_coefficients(self, job, host_list, comm_pattern):
         """Compute link-load coefficients for a job and cache them.
 
@@ -320,7 +358,11 @@ class NetworkModel:
         from raps.job import normalize_comm_pattern
         comm = normalize_comm_pattern(comm_pattern)
 
-        if comm == CommunicationPattern.STENCIL_3D:
+        if comm == CommunicationPattern.MATRIX_TEMPLATE:
+            traffic_matrix = getattr(job, 'traffic_template', None)
+            coeffs = compute_matrix_template_coefficients(
+                self.net_graph, host_list, traffic_matrix, apsp=self._apsp)
+        elif comm == CommunicationPattern.STENCIL_3D:
             coeffs = compute_stencil_3d_coefficients(
                 self.net_graph, host_list, apsp=self._apsp)
         elif self.topology == 'dragonfly':
@@ -435,6 +477,7 @@ class NetworkModel:
                 link_loads=self.global_link_loads,
                 apsp=self._apsp,
                 fattree_params={'paths_cache': getattr(self, '_fattree_paths_cache', None)},
+                traffic_matrix=getattr(job, 'traffic_template', None),
             )
             net_cong = worst_link_util(loads, max_throughput)
 
@@ -471,6 +514,7 @@ class NetworkModel:
                 dragonfly_params=dragonfly_params,
                 link_loads=self.global_link_loads,
                 apsp=self._apsp,
+                traffic_matrix=getattr(job, 'traffic_template', None),
             )
             net_cong = worst_link_util(loads, max_throughput)
 

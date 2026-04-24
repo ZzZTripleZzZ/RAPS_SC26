@@ -1,0 +1,36 @@
+# Reference Dragonfly topology specification
+# Used as the common ground truth for all simulator comparisons.
+#
+# Topology: Standard Dragonfly
+#   Groups (G):              9
+#   Routers per group (a):   4
+#   Hosts per router (p):    2
+#   Global links per router (h): 8  (full all-to-all inter-group connectivity)
+#   Total routers:           36
+#   Total hosts:             72
+#
+# Port budget per router: (a-1) intra + h inter + p host = 3 + 8 + 2 = 13 ports
+#
+# Network parameters:
+#   Link bandwidth:  25 GB/s  (Frontier Slingshot-like)
+#   Link latency:    100 ns
+#   Injection BW:    25 GB/s
+#   MTU:             4096 bytes
+
+topology: dragonfly
+groups: 9
+routers_per_group: 4     # a
+hosts_per_router: 2      # p
+global_links_per_router: 8  # h  (= G-1 = full connectivity)
+link_bandwidth_gbps: 25.0
+link_latency_ns: 100
+injection_bandwidth_gbps: 25.0
+mtu_bytes: 4096
+routing: minimal
+
+# Derived quantities (informational):
+# total_routers: 36
+# total_hosts: 72
+# intra_group_links_per_router: 3  (a-1)
+# inter_group_links_per_router: 8  (h)
+# bisection_bandwidth_gbps: 9 * 4 * 25 / 2 = 450  (approx, minimal routing)

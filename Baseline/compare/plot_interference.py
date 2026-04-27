@@ -31,7 +31,11 @@ os.makedirs(OUT_DIR, exist_ok=True)
 # Allow importing repo-level modules.
 if RAPS_ROOT not in sys.path:
     sys.path.insert(0, RAPS_ROOT)
-from raps.network.calibration import STALL_CALIBRATION  # noqa: E402
+from raps.network.calibration import (  # noqa: E402
+    STALL_CALIBRATION,
+    LAYER2_POWERLAW_FIT,
+    layer2_calibrated_slowdown,
+)
 
 # Map the interference-experiment topology labels (dragonfly / torus / fattree)
 # to the NetworkModel topology keys used for calibration lookup.
@@ -40,6 +44,10 @@ _CALIB_KEYS = {"dragonfly": "dragonfly", "torus": "torus3d", "fattree": "fat-tre
 
 def _kappa_for(topo_label):
     return STALL_CALIBRATION.get(_CALIB_KEYS.get(topo_label, topo_label), 1.0)
+
+
+def _powerlaw_for(topo_label):
+    return LAYER2_POWERLAW_FIT.get(_CALIB_KEYS.get(topo_label, topo_label))
 
 TOPOLOGIES = ["dragonfly", "torus", "fattree"]
 BULLY_NX_VALUES = [0, 50, 100, 150, 200, 300, 400]
@@ -328,8 +336,6 @@ def plot_simple_comparison():
                     color=colors_sst[topo], markersize=4, linewidth=1.5,
                     label="SST-Macro")
 
-        kappa = _kappa_for(topo)
-
         # ── (2) RAPS raw M/D/1 prediction (no calibration) ──────────────
         if raps:
             raps_nx = sorted(raps.keys())
@@ -338,16 +344,20 @@ def plot_simple_comparison():
                     color="#9C27B0", markersize=3, linewidth=1.2,
                     label="NRAPS M/D/1")
 
-        # ── (3) Calibrated with hardcoded κ (paper §5.4) ────────────────
-        # reported_slowdown = 1 + κ · (raw_md1 − 1).  κ is fixed per topology,
-        # not re-fit at runtime.
-        if raps:
+        # ── (3) Calibrated power-law fit on raps_raw_combined_rho ───────
+        # slowdown = a · ρ^α (per-topology a, α from LAYER2_POWERLAW_FIT,
+        # fit once via log-log polyfit against SST-Macro Layer-2 data).
+        fit = _powerlaw_for(topo)
+        if raps and fit is not None:
+            a, alpha = fit
             raps_nx = sorted(raps.keys())
-            raps_cal = [1.0 + kappa * (raps[nx].get("raps_md1_slowdown", 1.0) - 1.0)
+            raps_cal = [layer2_calibrated_slowdown(
+                            _CALIB_KEYS.get(topo, topo),
+                            raps[nx].get("raps_raw_combined_rho", 0.0))
                         for nx in raps_nx]
             ax.plot(raps_nx, raps_cal, 's--',
                     color="#E91E63", markersize=3, linewidth=1.0,
-                    label=f"NRAPS (κ={kappa:.2f})")
+                    label=f"NRAPS (a={a:.2f}, α={alpha:.2f})")
 
         # Per-topology Pearson r (log-log, rho_raw vs SST slowdown)
         title_str = f"{TOPO_LABELS[topo]}"

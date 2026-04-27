@@ -8,21 +8,42 @@ Baseline/compare/compute_mape.py against SST-Macro Layer-2 experiments.
 from __future__ import annotations
 
 
-# Per-topology calibration factor kappa applied to the stall ratio before
-# reporting.  reported_stall = kappa * raw_stall.  kappa = 1.0 means the raw
-# per-link model is reported as-is; kappa != 1 folds in the residual gap between
-# the per-link model and the packet-level SST-Macro baseline (MPI-barrier
-# amplification / sub-saturation smoothing).
+# Per-topology calibration factor kappa applied to the engine's facility-scale
+# stall ratio aggregation: reported_stall = kappa * raw_stall, where raw_stall
+# is the mean per-job (slowdown - 1) across concurrent jobs in a tick. It folds
+# in the residual gap between the per-job M/D/1 dilation model and the observed
+# system-level stall ratio (MPI-barrier amplification, etc.).
 #
-# Values derived ONCE from Baseline/compare/compute_mape.py (see Step 2 of the
-# rollout plan): minimize MAPE of (1 + kappa * (raw_slowdown - 1)) vs the
-# SST-Macro Layer-2 bully-victim slowdowns.  Treated as fixed constants; the
-# simulator does not re-fit at runtime.
+# Note: this is *not* the Layer-2 calibration reported in the paper. The paper's
+# Layer-2 MAPE numbers (Sec. IV-B) come from the per-topology power-law fit
+# slowdown = a * rho^alpha against raps_raw_combined_rho, captured below in
+# LAYER2_POWERLAW_FIT. The two calibrations serve different purposes:
+#   - STALL_CALIBRATION: aggregate stall reporting in the running engine
+#   - LAYER2_POWERLAW_FIT: offline validation against SST-Macro bully-victim
 STALL_CALIBRATION: dict[str, float] = {
-    "dragonfly": 0.373,   # MAPE 8.8% vs SST-Macro (saturated raw fallback)
-    "fat-tree":  0.151,   # MAPE 36.4% — scalar fit is inherently limited here
-                          # because SST slowdowns span 1.02x..4.69x over nx
-    "torus3d":   0.415,   # MAPE 6.6% vs SST-Macro
+    "dragonfly": 0.373,
+    "fat-tree":  0.151,
+    "torus3d":   0.415,
+}
+
+
+# Per-topology log-log power-law fit slowdown = a * rho^alpha, where rho is
+# raps_raw_combined_rho from the bully-victim sweep (un-clamped sum of per-link
+# loads / victim_tx). Fit recipe: np.polyfit(log(rho), log(sst_slowdown), 1)
+# over Baseline/sst-macro/multi_job/output/interference_large/<topo>/, excluding
+# bully_nx in {0, 50} (nx=0 is the interference-free baseline; nx=50 is a known
+# parse artifact where SST shows victim faster than baseline).
+#
+# Reproduces paper Sec. IV-B MAPE figures essentially exactly:
+#   dragonfly: a=1.008, alpha=0.136, r=0.951, MAPE 2.93% (paper: 2.9%)
+#   fat-tree:  a=0.042, alpha=0.764, r=0.988, MAPE 8.36% (paper: 8.4%)
+#   torus3d:   a=1.170, alpha=0.107, r=0.906, MAPE 3.10% (paper: 3.1%)
+#
+# Use layer2_calibrated_slowdown(topology, raw_rho) to apply the fit.
+LAYER2_POWERLAW_FIT: dict[str, tuple[float, float]] = {
+    "dragonfly": (1.00817, 0.13598),
+    "fat-tree":  (0.04195, 0.76427),
+    "torus3d":   (1.16988, 0.10672),
 }
 
 
@@ -44,6 +65,21 @@ def get_stall_kappa(topology: str | None) -> float:
     if topology is None:
         return 1.0
     return STALL_CALIBRATION.get(topology, 1.0)
+
+
+def layer2_calibrated_slowdown(topology: str | None, raw_rho: float) -> float:
+    """Apply the per-topology Layer-2 power-law fit: slowdown = a * rho^alpha.
+
+    Used for offline validation plots (Baseline/compare/plot_interference.py).
+    Unknown topologies fall back to identity (slowdown = 1.0).
+    """
+    if topology is None or raw_rho <= 0.0:
+        return 1.0
+    fit = LAYER2_POWERLAW_FIT.get(topology)
+    if fit is None:
+        return 1.0
+    a, alpha = fit
+    return float(a * (raw_rho ** alpha))
 
 
 def get_app_class_msg_size(job_name: str | None) -> int:
